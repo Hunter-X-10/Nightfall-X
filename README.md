@@ -215,6 +215,6 @@ Funciona y está comprobado con pruebas automáticas, pero conviene saber dónde
 
 ## 📄 Licencia
 
-[MIT](LICENSE) © 2026 Alexus.
+[MIT](LICENSE) © 2026 Hunter-X.
 
 Puedes usar, copiar, modificar y distribuir este proyecto, también con fines comerciales, siempre que conserves el aviso de autoría y la licencia. Se ofrece tal cual, sin garantías.
