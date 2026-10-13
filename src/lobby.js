@@ -6,7 +6,7 @@ import { MAPS } from './maps.js';
 const $ = (id) => document.getElementById(id);
 const NAME_KEY = 'nightfall.name';
 
-// Ajustes de la partida: clave del servidor (ver rooms.js) y opciones [valor, texto].
+// Ajustes de la partida: clave de la sala (ver src/roomCore.js) y opciones [valor, texto].
 const SETTINGS = [
   { key: 'map', options: MAPS.map((m, i) => [i, `${m.name} · ${m.desc}`]) },
   { key: 'goal', options: [5, 10, 15, 20, 30, 40, 50, 75, 100].map((n) => [n, `${n} bajas`]) },
@@ -40,7 +40,7 @@ export class Lobby {
       try { await navigator.clipboard.writeText(url); $('btn-copy').textContent = 'ENLACE COPIADO'; } catch { $('btn-copy').textContent = url; }
     });
 
-    // Desplegables de ajustes: cada cambio se envía al servidor, que lo valida y lo reparte a todos.
+    // Desplegables de ajustes: cada cambio se envía a la sala, que lo valida y lo reparte a todos.
     for (const { key, options } of SETTINGS) {
       const select = $(`set-${key}`);
       for (const [value, label] of options) select.add(new Option(label, String(value)));
@@ -141,6 +141,7 @@ export class Lobby {
     enter.textContent = live ? 'ENTRAR EN LA PARTIDA' : net.isHost ? 'INICIAR PARTIDA' : 'ESPERANDO AL ANFITRIÓN…';
     const goal = `Gana el primer equipo que consiga ${cfg.goal} bajas${cfg.time > 0 ? `, o el que vaya por delante a los ${cfg.time} minutos` : ''}.`;
     $('lobby-note').textContent = live ? `La partida ya está en curso. ${goal}`
-      : `${goal} ${net.isHost ? 'Comparte el código para que se unan y ajusta la partida a tu gusto.' : 'Los ajustes los decide el anfitrión.'}`;
+      : `${goal} ${net.isHost ? 'Comparte el código para que se unan y ajusta la partida a tu gusto.' : 'Los ajustes los decide el anfitrión.'}`
+        + (net.direct && net.isHost ? ' La partida corre en tu navegador: si cierras esta pestaña, se acaba para todos.' : '');
   }
 }

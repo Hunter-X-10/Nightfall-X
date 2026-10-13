@@ -472,7 +472,7 @@ try {
   await B.evaluate('__game.input.fire = true');
   await sleep(300);
   await B.evaluate('__game.input.fire = false');
-  check('el arma de la misión no envía nada a la red', await B.evaluate('__game.combat.shots >= 2 && __game.net.ws === null'));
+  check('el arma de la misión no envía nada a la red', await B.evaluate('__game.combat.shots >= 2 && __game.net.link === null'));
 
   // Caída del servidor: el anfitrión vuelve al menú con aviso.
   server.kill();

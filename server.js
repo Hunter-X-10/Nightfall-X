@@ -14,7 +14,7 @@ const PORT = Number(args.find((a) => /^\d+$/.test(a)) || process.env.PORT || 517
 // Algunos alojamientos (alwaysdata) indican también la dirección en la que escuchar, en la variable IP.
 const HOST = process.env.HOST || process.env.IP || (args.includes('--lan') || process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 // Solo se sirve lo que necesita el navegador.
-const PUBLIC = ['/index.html', '/css/', '/src/', '/node_modules/three/'];
+const PUBLIC = ['/index.html', '/css/', '/src/', '/node_modules/three/', '/node_modules/peerjs/dist/'];
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -72,13 +72,13 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
-attachRooms(server);
-
-server.listen(PORT, HOST, () => {
-  console.log(`NIGHTFALL listo en  http://localhost:${PORT}`);
-  if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
-    for (const list of Object.values(os.networkInterfaces())) {
-      for (const n of list || []) if (n.family === 'IPv4' && !n.internal) console.log(`  En tu red local:  http://${n.address}:${PORT}`);
+attachRooms(server).then(() => {
+  server.listen(PORT, HOST, () => {
+    console.log(`NIGHTFALL listo en  http://localhost:${PORT}`);
+    if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
+      for (const list of Object.values(os.networkInterfaces())) {
+        for (const n of list || []) if (n.family === 'IPv4' && !n.internal) console.log(`  En tu red local:  http://${n.address}:${PORT}`);
+      }
     }
-  }
+  });
 });

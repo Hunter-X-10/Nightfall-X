@@ -121,9 +121,38 @@ El servidor mostrará la dirección que deben abrir los demás.
 
 ## Publicarlo en internet
 
-El juego necesita un alojamiento que **ejecute Node y admita WebSockets**; un alojamiento solo de archivos no sirve, porque las salas las lleva el servidor.
+Hay dos maneras, y el juego es el mismo en las dos:
 
-El repositorio viene preparado de dos formas:
+| | Página estática | Con servidor |
+|---|---|---|
+| Dónde | Netlify, Vercel, GitHub Pages… | Raspberry Pi, contenedor, Render… |
+| Quién lleva la sala | El navegador del anfitrión | El servidor |
+| Si el anfitrión se va | Se acaba la partida | La sala sigue con los demás |
+| Conexión | Directa entre jugadores (WebRTC) | Todos contra el servidor (WebSocket) |
+
+### Como página estática (Netlify, Vercel…)
+
+No hace falta servidor: quien crea la partida hace de anfitrión y los demás se conectan directamente a su navegador. Para encontrarse usan el servicio público y gratuito de [PeerJS](https://peerjs.com); los datos de la partida no pasan por él.
+
+```bash
+npm install
+npm run build
+```
+
+Eso deja en `dist/` todo lo que hay que subir (unos 3 MB). Tres formas de publicarlo:
+
+- **Arrastrando la carpeta**: abre [app.netlify.com/drop](https://app.netlify.com/drop) y suelta `dist/`.
+- **Netlify conectado al repositorio**: *Add new site → Import an existing project*. La configuración ya está en `netlify.toml`; cada `git push` vuelve a publicar.
+- **Vercel**: *Add New → Project* e importa el repositorio. La configuración está en `vercel.json`.
+
+A tener en cuenta:
+
+- La partida corre en el navegador del anfitrión: si cierra la pestaña, termina para todos, y su conexión marca el retraso de los demás.
+- Algunas redes (ciertas wifis de empresa o de universidad, algunos móviles) impiden las conexiones directas; quien esté en una puede no lograr entrar.
+
+### Con servidor
+
+Hace falta un alojamiento que **ejecute Node y admita WebSockets**. El repositorio viene preparado de dos formas:
 
 - **`Dockerfile`**, para cualquier alojamiento de contenedores, como [Back4app Containers](https://www.back4app.com/container-as-a-service-caas): se conecta el repositorio y el servicio construye y arranca la imagen. El servidor escucha en el puerto 7860 y gasta muy poca memoria (unos 16 MB en reposo).
 - **`render.yaml`**, para [Render](https://render.com), creando un *Blueprint* a partir del repositorio.
@@ -173,11 +202,12 @@ A tener en cuenta:
 
 - **[Three.js](https://threejs.org)** sobre WebGL, sin paso de compilación: el navegador carga los módulos tal cual.
 - **Servidor mínimo** en Node: `server.js` sirve los archivos y `rooms.js` lleva las salas por WebSocket. Su única dependencia es `ws`.
-- **Red sencilla a propósito**: quien dispara decide si acierta, según lo que ve en su pantalla; la víctima aplica el daño y avisa de su muerte; el servidor solo reparte posiciones, lleva el marcador y decide cuándo acaba la partida.
+- **Las salas funcionan igual con servidor que sin él**: su lógica (`src/roomCore.js`) no sabe por dónde llegan los mensajes. La ejecuta el servidor o, en la versión estática, el navegador del anfitrión, al que los demás se conectan con [PeerJS](https://peerjs.com).
+- **Red sencilla a propósito**: quien dispara decide si acierta, según lo que ve en su pantalla; la víctima aplica el daño y avisa de su muerte; la sala solo reparte posiciones, lleva el marcador y decide cuándo acaba la partida.
 
 ```
 server.js          servidor web
-rooms.js           salas, equipos, marcador y ajustes
+rooms.js           salas por WebSocket
 index.html, css/   página, menús y HUD
 src/
   main.js          arranque, estados del juego y bucle principal
@@ -185,13 +215,15 @@ src/
   world/           un archivo por mapa, más las piezas comunes (vehículos, contenedores…)
   weapon.js        las tres armas
   combat.js        daño, bajas y bidones explosivos
-  net.js           conexión con el servidor
+  roomCore.js      salas, equipos, marcador y ajustes
+  net.js           conexión con la sala
+  p2p.js           conexión directa entre navegadores, sin servidor
   remotePlayers.js los demás jugadores en pantalla
   enemies.js       inteligencia de los soldados de la misión
-tools/             pruebas automáticas
+tools/             pruebas automáticas y build.mjs, que prepara dist/
 ```
 
-Para añadir un mapa: un archivo nuevo en `src/world/`, una línea en `src/maps.js` y subir `MAP_COUNT` en `rooms.js`.
+Para añadir un mapa: un archivo nuevo en `src/world/`, una línea en `src/maps.js` y subir `MAP_COUNT` en `src/roomCore.js`.
 
 ### Pruebas
 
@@ -201,13 +233,19 @@ npm run test:online
 
 Abre dos navegadores y un tercer jugador simulado, y juega partidas completas en los tres mapas: crear sala, unirse, disparar, morir, reaparecer, cambiar ajustes y terminar. Necesita Google Chrome instalado en Windows en su ruta habitual.
 
+```bash
+npm run test:p2p
+```
+
+Construye `dist/`, la sirve como simples archivos y juega una partida con tres navegadores conectados directamente entre sí. Necesita internet.
+
 ---
 
 ## Estado del proyecto
 
 Funciona y está comprobado con pruebas automáticas, pero conviene saber dónde están los límites:
 
-- **Todavía no se ha jugado con muchas personas reales ni por internet.** Las pruebas se han hecho en un solo ordenador.
+- **Todavía no se ha jugado con muchas personas reales ni por internet.** Las pruebas se han hecho en un solo ordenador, también las de la conexión directa entre navegadores.
 - **No hay protección contra trampas.** Está pensado para jugar entre conocidos.
 - La primera vez que se carga un mapa hay una pausa de unos segundos.
 - Los valores de daño, tiempos y el diseño de los mapas nuevos son un punto de partida, pendiente de ajustar jugando.

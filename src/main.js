@@ -383,9 +383,9 @@ async function boot() {
       input.enabled = false; input.fire = false; input.aim = false; input.keys.clear();
     },
     error: (msg) => lobby.error(msg),
-    close: () => {
+    close: (msg) => {
       if (mode === 'online') toMenu();
-      lobby.open('', 'Se perdió la conexión con el servidor');
+      lobby.open('', msg);
     },
   };
 
@@ -459,6 +459,8 @@ async function boot() {
   $('opt-sens').addEventListener('input', (e) => { player.sensitivity = Number(e.target.value); });
   $('opt-vol').addEventListener('input', (e) => audio.setVolume(Number(e.target.value)));
   $('opt-quality').addEventListener('change', (e) => setQuality(e.target.value));
+  // Al cerrar la pestaña se suelta la sala en el acto, para que los demás no esperen a que caduque la conexión.
+  window.addEventListener('pagehide', () => net.leave());
   window.addEventListener('beforeunload', (e) => { if (state === 'playing' || state === 'paused') { e.preventDefault(); e.returnValue = ''; } });
 
   // ---------- Bucle ----------

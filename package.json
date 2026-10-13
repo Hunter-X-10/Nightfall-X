@@ -11,10 +11,13 @@
   "scripts": {
     "start": "node server.js",
     "lan": "node server.js --lan",
+    "build": "node tools/build.mjs",
     "shot": "node tools/shot.mjs",
-    "test:online": "node tools/mptest.mjs"
+    "test:online": "node tools/mptest.mjs",
+    "test:p2p": "node tools/p2ptest.mjs"
   },
   "dependencies": {
+    "peerjs": "^1.5.5",
     "three": "^0.186.1",
     "ws": "^8.22.0"
   },

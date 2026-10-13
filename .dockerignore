@@ -5,3 +5,6 @@ tools
 *.md
 start.bat
 render.yaml
+netlify.toml
+vercel.json
+dist

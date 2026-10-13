@@ -1,5 +1,5 @@
 // Catálogo de mapas. El índice es el valor del ajuste "mapa" de la sala (el servidor conoce cuántos hay:
-// ver MAP_COUNT en rooms.js). Cada `build(scene, M, reflection)` devuelve el mundo ya construido:
+// ver MAP_COUNT en src/roomCore.js). Cada `build(scene, M, reflection)` devuelve el mundo ya construido:
 //   group (todo lo visible, luces incluidas) · col (colisiones) · ground · lamps, barrels, emitters
 //   bounds (límites para el jugador) · spawns[equipo] (zonas de aparición) · env (ambiente: cielo,
 //   niebla, luz, lluvia…) · envPos (punto de captura del mapa de entorno)
