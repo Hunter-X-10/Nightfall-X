@@ -10,6 +10,7 @@ const R = 0.36;
 const _v = new THREE.Vector3();
 const _hit = {};
 const _pos = { x: 0, z: 0 };
+const _nav = { x: 0, z: 0 };
 
 export class Enemies {
   constructor(scene, col, fx, audio, surf, coverNodes) {
@@ -20,11 +21,16 @@ export class Enemies {
     this.onKilled = null;
     this.combatLevel = 0;
     this.active = true; // en partidas en línea no hay IA
+    // Supervivencia: los soldados saben más o menos dónde está el jugador y van a por él (ver track).
+    this.hunt = false;
+    this.reactK = 1; // multiplica el tiempo de reacción al entrar en combate (menos = más rápidos)
+    this.lights = true; // linterna en el arma (de día no se lleva)
+    this.nav = null; // rejilla de navegación hacia el jugador (NavGrid, solo en supervivencia)
   }
 
   setActive(v) {
     this.active = v;
-    for (const e of this.list) e.s.mesh.visible = v;
+    for (const e of this.list) e.s.mesh.visible = v && !e.off;
     if (!v) this.combatLevel = 0;
   }
 
@@ -43,20 +49,52 @@ export class Enemies {
   }
 
   reset() {
-    this.list.forEach((e, i) => {
-      const sp = e.spec;
-      Object.assign(e, {
-        x: sp.x, z: sp.z, yaw: sp.yaw || 0, state: ST.PATROL, hp: 100, wp: 0, wait: rand(0, 2),
-        awareness: 0, think: i * 0.03, canSee: false, dist: 99, lostT: 0, lastX: sp.x, lastZ: sp.z,
-        coverNode: null, peek: false, peekT: 0, peekX: 0, peekZ: 0, reaction: 0, burst: 0, shotCool: 0, pause: 0, grace: 1,
-        stuckT: 0, sx: sp.x, sz: sp.z, sideT: 0, sideX: 0, sideZ: 0, tx: sp.x, tz: sp.z, moving: false, shout: 0, deadT: 0, flinchV: 0, speed: 0,
-        td: -1, // remate con el cuchillo: segundos desde que el jugador lo agarró (-1 = no)
-      });
-      Object.assign(e.pose, { phase: i * 1.3, walk: 0, crouch: 0, aim: 0, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0, lean: 0, look: i, grab: 0, slump: 0 });
-      e.cone.visible = true; e.fl.visible = true;
-      e.s.mesh.visible = this.active;
-    });
+    this.list.forEach((e, i) => this.place(e, i, e.spec.x, e.spec.z, e.spec.yaw || 0));
     this.combatLevel = 0;
+  }
+
+  // Deja al soldado `i` vivo y de patrulla en (x, z), como al empezar.
+  place(e, i, x, z, yaw) {
+    Object.assign(e, {
+      x, z, yaw, state: ST.PATROL, hp: 100, wp: 0, wait: rand(0, 2),
+      awareness: 0, think: i * 0.03, canSee: false, dist: 99, lostT: 0, lastX: x, lastZ: z,
+      coverNode: null, badNode: null, peek: false, peekT: 0, peekX: 0, peekZ: 0, reaction: 0, burst: 0, shotCool: 0, pause: 0, grace: 1,
+      stuckT: 0, stuckN: 0, sx: x, sz: z, sideT: 0, sideX: 0, sideZ: 0, tx: x, tz: z, moving: false, shout: 0, deadT: 0, flinchV: 0, speed: 0,
+      td: -1, // remate con el cuchillo: segundos desde que el jugador lo agarró (-1 = no)
+      off: false, // fuera de juego (supervivencia: espera su turno, oculto)
+      huntT: rand(3, 6), // supervivencia: segundos hasta volver a saber dónde está el jugador
+    });
+    Object.assign(e.pose, { phase: i * 1.3, walk: 0, crouch: 0, aim: 0, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0, lean: 0, look: i, grab: 0, slump: 0 });
+    e.cone.visible = this.lights; e.fl.visible = this.lights;
+    e.s.mesh.visible = this.active;
+  }
+
+  // ---------- Supervivencia ----------
+  // Retira a todos: quedan fuera de juego (como muertos, sin cuerpo) hasta que entren con enter().
+  bench() {
+    for (const e of this.list) {
+      if (e.coverNode) e.coverNode.user = null;
+      Object.assign(e, { off: true, state: ST.DEAD, td: -1, coverNode: null, deadT: 99 });
+      e.pose.death = 1;
+      e.s.mesh.visible = false; e.cone.visible = false; e.fl.visible = false;
+    }
+    this.combatLevel = 0;
+  }
+
+  // Mete en juego al soldado `e` en (x, z), ya alerta y en camino hacia (tx, tz).
+  enter(e, x, z, tx, tz) {
+    if (e.coverNode) e.coverNode.user = null;
+    this.place(e, this.list.indexOf(e), x, z, Math.atan2(tx - x, tz - z));
+    e.state = ST.ALERT; e.awareness = 0.6; e.lastX = tx; e.lastZ = tz;
+    this.applyPose(e);
+  }
+
+  // Le dice dónde anda el jugador, con unos metros de error: deja de esperar y va hacia allí.
+  track(e, px, pz) {
+    if (e.state === ST.COMBAT) { if (e.coverNode) e.coverNode.user = null; e.coverNode = null; }
+    e.state = ST.ALERT; e.lostT = 0; e.stuckN = 0;
+    e.awareness = Math.max(e.awareness, 0.6);
+    e.lastX = px + rand(-5, 5); e.lastZ = pz + rand(-5, 5);
   }
 
   get alive() { return this.list.reduce((n, e) => n + (e.state !== ST.DEAD ? 1 : 0), 0); }
@@ -112,7 +150,7 @@ export class Enemies {
 
   engage(e, reaction = rand(0.5, 0.9)) {
     if (e.state === ST.DEAD || e.state === ST.COMBAT) return;
-    e.state = ST.COMBAT; e.reaction = reaction; e.grace = 0.35; e.shout = 0.7; e.burst = 0; e.pause = 0; e.coverNode = null; e.awareness = 1;
+    e.state = ST.COMBAT; e.reaction = reaction * this.reactK; e.grace = 0.35; e.shout = 0.7; e.burst = 0; e.pause = 0; e.coverNode = null; e.awareness = 1;
   }
 
   // Ruido (disparo del jugador): alerta a quien esté dentro del radio.
@@ -170,6 +208,7 @@ export class Enemies {
     const hx = player.headX; const hz = player.headZ; // la cabeza se desplaza al asomarse a cubierto
     let combat = 0;
     for (const e of this.list) {
+      if (e.off) continue;
       const p = e.pose;
       if (e.td >= 0) {
         // Remate: quieto, sin percibir ni disparar. Al terminar la caída queda muerto en el suelo.
@@ -192,6 +231,17 @@ export class Enemies {
       e.dist = Math.hypot(dx, dz);
       const eyeY = 1.62 - p.crouch * 0.42;
 
+      // Supervivencia: de vez en cuando vuelve a saber por dónde anda el jugador. Así nadie se queda
+      // parado lejos ni esperando a cubierto a alguien que ya no ve.
+      if (this.hunt && !player.dead) {
+        e.huntT -= dt;
+        if (e.huntT <= 0) {
+          e.huntT = rand(5, 8);
+          if (e.state !== ST.COMBAT || e.lostT > 5) this.track(e, px, pz); // (en combate, lostT no pasa de 6)
+          else if (e.dist > 22) { e.badNode = e.coverNode; this.pickCover(e, e.lastX, e.lastZ); } // lejos: otra cobertura, más cerca
+        }
+      }
+
       // --- Percepción (escalonada) ---
       e.think -= dt;
       if (e.think <= 0) {
@@ -211,7 +261,7 @@ export class Enemies {
       let wantAim = 0; let wantCrouch = 0;
 
       if (e.state === ST.PATROL) {
-        const path = e.spec.path;
+        const path = this.hunt ? null : e.spec.path; // la ruta de patrulla es de la misión
         if (path && path.length) {
           if (e.wait > 0) { e.wait -= dt; p.look += dt * 0.9; }
           else if (this.move(e, path[e.wp][0], path[e.wp][1], 1.25, dt)) { e.wp = (e.wp + 1) % path.length; e.wait = rand(1.5, 4.5); }
@@ -220,7 +270,10 @@ export class Enemies {
       } else if (e.state === ST.ALERT) {
         wantAim = 0.7;
         e.lostT += dt;
-        if (this.move(e, e.lastX, e.lastZ, 2.5, dt) || e.lostT > 9 || (e.stuckN || 0) > 3) {
+        // Supervivencia: de lejos sigue la rejilla de navegación (rodea los edificios); de cerca, recto.
+        let gx = e.lastX; let gz = e.lastZ;
+        if (this.nav && Math.hypot(gx - e.x, gz - e.z) > 5 && this.nav.ahead(e.x, e.z, _nav)) { gx = _nav.x; gz = _nav.z; e.lostT = Math.min(e.lostT, 5); }
+        if (this.move(e, gx, gz, 2.5, dt) || e.lostT > 9 || (e.stuckN || 0) > 3) {
           p.look += dt * 1.6;
           if (e.lostT > 12) { e.state = ST.PATROL; e.awareness = 0; e.stuckN = 0; }
         }
@@ -255,6 +308,11 @@ export class Enemies {
             }
             wantCrouch = n.low && !e.peek ? 1 : 0;
           }
+        } else if (this.hunt && e.dist > 18) {
+          // Supervivencia, sin cobertura a mano: avanza hacia el jugador (disparando si lo ve).
+          let gx = px; let gz = pz;
+          if (this.nav && this.nav.ahead(e.x, e.z, _nav)) { gx = _nav.x; gz = _nav.z; }
+          this.move(e, gx, gz, 2.2, dt);
         } else if (e.canSee) {
           // Sin cobertura: se mueve de lado mientras dispara.
           e.peekT -= dt;

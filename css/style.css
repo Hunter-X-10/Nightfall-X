@@ -192,14 +192,94 @@ h2 { font-size: 64px; margin: 0 0 22px; font-weight: 700; letter-spacing: 6px; f
 .btn.ghost { background: transparent; color: var(--hud); border: 1px solid rgba(255, 255, 255, 0.35); }
 .btn.ghost:hover { color: #06090d; }
 
-.controls { display: grid; grid-template-columns: repeat(3, auto); gap: 7px 26px; margin-top: 34px; font-size: 12px; color: var(--hud-dim); letter-spacing: 1px; justify-content: start; }
-.controls b { color: var(--hud); font-weight: 600; margin-right: 6px; }
 .tip { margin-top: 26px; font-size: 11px; letter-spacing: 2px; color: rgba(232, 240, 245, 0.32); }
 
 .opt-row { display: flex; gap: 26px; justify-content: center; margin-top: 26px; font-size: 12px; letter-spacing: 2px; color: var(--hud-dim); }
 .opt-row label { display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
 .opt-row input, .opt-row select { pointer-events: auto; accent-color: var(--accent); }
 .opt-row select { background: #0c1218; color: var(--hud); border: 1px solid rgba(255, 255, 255, 0.3); padding: 4px 8px; font: inherit; }
+
+/* ---------- Menú principal ---------- */
+#menu {
+  padding-left: 7vw;
+  background:
+    linear-gradient(90deg, rgba(3, 6, 10, 0.9) 0%, rgba(3, 6, 10, 0.62) 34%, rgba(3, 6, 10, 0) 68%),
+    linear-gradient(0deg, rgba(3, 6, 10, 0.88) 0%, rgba(3, 6, 10, 0) 30%);
+}
+#menu .menu-inner { position: relative; padding-left: 30px; margin-top: -11vh; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+#menu .menu-inner::before { content: ''; position: absolute; left: -1px; top: 0; width: 2px; height: 72px; background: var(--accent); }
+
+/* Marco de visor: cuatro esquinas finas */
+.frame { position: absolute; inset: 22px; pointer-events: none; }
+.frame i { position: absolute; width: 26px; height: 26px; border: 0 solid rgba(255, 255, 255, 0.26); }
+.frame i:nth-child(1) { left: 0; top: 0; border-left-width: 1px; border-top-width: 1px; }
+.frame i:nth-child(2) { right: 0; top: 0; border-right-width: 1px; border-top-width: 1px; }
+.frame i:nth-child(3) { left: 0; bottom: 0; border-left-width: 1px; border-bottom-width: 1px; }
+.frame i:nth-child(4) { right: 0; bottom: 0; border-right-width: 1px; border-bottom-width: 1px; }
+
+.status { display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: 4px; color: var(--hud-dim); margin-bottom: 14px; }
+.status .live { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: live 1.8s infinite; }
+.status .sep { color: var(--accent); opacity: 0.75; letter-spacing: 0; }
+@keyframes live { 0%, 55% { opacity: 1; } 75% { opacity: 0.15; } 100% { opacity: 1; } }
+
+.logo { font-size: clamp(64px, 10vw, 142px); letter-spacing: 3px; line-height: 0.88; text-shadow: 0 4px 34px rgba(0, 0, 0, 0.55); white-space: nowrap; }
+.logo .x { color: var(--accent); margin-left: 0.04em; text-shadow: 0 0 28px rgba(255, 179, 71, 0.45); }
+#menu .sub { margin: 14px 0 34px; font-size: 12px; letter-spacing: 6px; }
+
+/* Entradas del menú: número, nombre y descripción; al pasar el ratón, barra y brillo ámbar */
+.main-menu { display: flex; flex-direction: column; gap: 2px; width: 460px; max-width: 80vw; }
+.mi {
+  position: relative; display: grid; grid-template-columns: 38px 1fr; align-items: baseline; text-align: left;
+  pointer-events: auto; cursor: pointer; font: inherit; color: var(--hud); background: none; border: 0;
+  padding: 10px 16px 11px 12px; overflow: hidden; transition: padding .22s cubic-bezier(.2, .7, .2, 1);
+}
+.mi::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; background: var(--accent); transform: scaleY(0); transition: transform .22s; }
+.mi::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255, 179, 71, 0.17), rgba(255, 179, 71, 0) 85%); opacity: 0; transition: opacity .22s; }
+.mi > span { position: relative; z-index: 1; }
+.mi-num { grid-row: 1 / span 2; font-size: 11px; letter-spacing: 2px; color: rgba(232, 240, 245, 0.38); font-variant-numeric: tabular-nums; transition: color .22s; }
+.mi-label { font-size: 21px; font-weight: 600; letter-spacing: 6px; transition: color .22s, letter-spacing .22s; }
+.mi-desc { grid-column: 2; margin-top: 4px; font-size: 11px; letter-spacing: 2px; color: var(--hud-dim); }
+.mi.primary .mi-label { font-size: 30px; letter-spacing: 7px; }
+.mi.primary::before { transform: scaleY(1); opacity: 0.55; }
+.mi:hover:not(:disabled), .mi:focus-visible { padding-left: 22px; outline: none; }
+.mi:hover:not(:disabled)::before, .mi:focus-visible::before { transform: scaleY(1); opacity: 1; }
+.mi:hover:not(:disabled)::after, .mi:focus-visible::after { opacity: 1; }
+.mi:hover:not(:disabled) .mi-label, .mi:focus-visible .mi-label { color: var(--accent); letter-spacing: 8px; }
+.mi:hover:not(:disabled) .mi-num, .mi:focus-visible .mi-num { color: var(--accent); }
+.mi:disabled { cursor: default; }
+.mi:disabled .mi-label, .mi:disabled .mi-num { opacity: 0.4; }
+
+/* Controles, abajo: teclas en grupos */
+.menu-foot { position: absolute; left: 7vw; right: 7vw; bottom: 40px; display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; }
+.keys { display: flex; gap: 44px; }
+.key-group { display: flex; flex-direction: column; gap: 7px; font-size: 11px; letter-spacing: 1px; color: var(--hud-dim); white-space: nowrap; }
+.kg-title { font-size: 10px; letter-spacing: 4px; color: var(--accent); margin-bottom: 2px; }
+kbd {
+  display: inline-block; min-width: 20px; padding: 2px 6px 1px; margin-right: 3px; font: inherit; font-size: 10px; font-weight: 600;
+  letter-spacing: 1px; text-align: center; color: var(--hud); background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.22); border-bottom-width: 2px; border-radius: 3px;
+}
+.menu-foot .tip { margin: 0; text-align: right; }
+
+/* Entrada escalonada al abrir el menú */
+#menu .menu-inner > *, #menu .mi, #menu .menu-foot { animation: rise .7s cubic-bezier(.2, .7, .2, 1) both; }
+#menu .logo { animation-delay: .08s; }
+#menu .sub { animation-delay: .16s; }
+#menu .mi:nth-child(1) { animation-delay: .24s; }
+#menu .mi:nth-child(2) { animation-delay: .3s; }
+#menu .mi:nth-child(3) { animation-delay: .36s; }
+#menu .mi:nth-child(4) { animation-delay: .42s; }
+#menu .menu-foot { animation-delay: .5s; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+@media (max-height: 760px) {
+  .logo { font-size: clamp(56px, 8.5vw, 112px); }
+  #menu .sub { margin-bottom: 24px; }
+  .mi { padding-top: 7px; padding-bottom: 8px; }
+  .mi.primary .mi-label { font-size: 26px; }
+  .menu-foot { bottom: 30px; }
+}
+@media (max-width: 1100px) { .key-group:nth-child(3) { display: none; } }
 
 /* ---------- Armería ---------- */
 #armory h2 { font-size: 46px; margin-bottom: 22px; }
@@ -209,6 +289,17 @@ h2 { font-size: 64px; margin: 0 0 22px; font-weight: 700; letter-spacing: 6px; f
 .tabs .btn:hover:not(.on), .charm-grid .btn:hover:not(.on) { background: rgba(255, 179, 71, 0.16); color: var(--hud); border-color: var(--accent); }
 .tabs .btn.on, .charm-grid .btn.on { background: var(--accent); color: #06090d; border-color: var(--accent); }
 #armory .tip { margin-top: 18px; max-width: 420px; }
+
+/* ---------- Supervivencia ---------- */
+#survival h2 { font-size: 46px; margin-bottom: 0; }
+#survival .sub { margin: 10px 0 26px; letter-spacing: 2px; max-width: 460px; line-height: 1.6; }
+.map-list { display: flex; flex-direction: column; gap: 10px; width: 460px; max-width: 82vw; }
+.btn.map-pick { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; text-align: left; padding: 14px 18px; margin: 0; letter-spacing: 4px; }
+.btn.map-pick:hover:not(:disabled) { letter-spacing: 4px; }
+.map-pick b { font-size: 16px; font-weight: 600; }
+.map-pick span { font-size: 11px; letter-spacing: 1.5px; color: var(--hud-dim); grid-column: 1; }
+.map-pick .rec { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--accent); letter-spacing: 2px; }
+.map-pick:hover span, .map-pick:hover .rec { color: #06090d; }
 
 /* ---------- Multijugador ---------- */
 #mp h2, #lobby h2 { font-size: 46px; margin-bottom: 26px; }

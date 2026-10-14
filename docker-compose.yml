@@ -1,4 +1,4 @@
-# NIGHTFALL en una Raspberry Pi (u otro equipo en casa).
+# NIGHTFALL-X en una Raspberry Pi (u otro equipo en casa).
 #
 # Con Tailscale Funnel (u otro proxy en el propio equipo):
 #   docker compose up -d --build

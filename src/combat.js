@@ -29,6 +29,8 @@ export class Combat {
     this.g = g; // referencias: world, fx, audio, enemies, player, hud, weapon, net, remotes
     this.difficulty = 1;
     this.mission = true; // false en partidas en línea: sin objetivos ni final de misión
+    this.survival = false; // modo supervivencia: hay IA, pero sin los objetivos de la misión
+    this.onKill = null; // aviso de cada baja de la IA (supervivencia: puntos y munición)
     this.timers = [];
     this.source = { by: 0, part: 0, w: 0 }; // quién causa el daño que se está aplicando al jugador (0 = nadie) y con qué arma
     this.reset();
@@ -36,6 +38,7 @@ export class Combat {
       this.kills++;
       if (part === 'head') this.headshots++;
       g.hud.killMsg(part === 'head' ? 'HOSTIL NEUTRALIZADO · DISPARO A LA CABEZA' : 'HOSTIL NEUTRALIZADO');
+      this.onKill?.(e, part);
     };
   }
 
@@ -46,7 +49,7 @@ export class Combat {
   }
 
   get flashlight() { return this.g.weapon.lightOn; }
-  get objective() { return this.done || !this.mission ? null : this.stage === 0 ? { x: 0, z: BASE.z1 - 1, y: 1.6 } : { x: OBJECTIVE.x, z: OBJECTIVE.z - 1.6, y: 1.6 }; }
+  get objective() { return this.done || !this.mission || this.survival ? null : this.stage === 0 ? { x: 0, z: BASE.z1 - 1, y: 1.6 } : { x: OBJECTIVE.x, z: OBJECTIVE.z - 1.6, y: 1.6 }; }
 
   // Disparo del jugador: origen y dirección (THREE.Vector3). Devuelve el punto final.
   playerShot(o, d) {
@@ -365,7 +368,7 @@ export class Combat {
     }
     for (const e of fx.emitters) if (e.life !== undefined && (e.life -= dt) <= 0) e.off = true;
 
-    if (this.done || player.dead || !this.mission) return;
+    if (this.done || player.dead || !this.mission || this.survival) return;
     if (this.stage === 0 && player.pos.z < BASE.z1 - 1) {
       this.stage = 1;
       hud.objective('Llega al terminal del almacén', '');

@@ -74,7 +74,7 @@ server.on('error', (e) => {
 
 attachRooms(server).then(() => {
   server.listen(PORT, HOST, () => {
-    console.log(`NIGHTFALL listo en  http://localhost:${PORT}`);
+    console.log(`NIGHTFALL-X listo en  http://localhost:${PORT}`);
     if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
       for (const list of Object.values(os.networkInterfaces())) {
         for (const n of list || []) if (n.family === 'IPv4' && !n.internal) console.log(`  En tu red local:  http://${n.address}:${PORT}`);

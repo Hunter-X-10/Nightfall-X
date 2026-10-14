@@ -256,8 +256,11 @@ float hzStripe = step(0.5, fract((gp.x + gp.y) * 1.4));`,
   // Dos zonas de aparición por equipo, tras el muro de contenedores y mirando hacia el centro.
   const zones = (s) => [-24, 10].map((z) => ({ x: s * 41.4, z, r: 3.8, yaw: s * Math.PI / 2 }));
 
+  // Nodos de cobertura para la IA (modo supervivencia): fuera de obstáculos y dentro del recinto.
+  const cover = ctx.cover.filter((n) => !ctx.col.blockedAbove(n.x, n.z, 0.34, 0.3, 1.6) && Math.abs(n.x) < HX - 1 && n.z > -HZ + 1 && n.z < QUAY - 1);
+
   return {
-    ctx, group: ctx.group, ground, cover: [], enemies: [], staticMeshes,
+    ctx, group: ctx.group, ground, cover, enemies: [], staticMeshes,
     col: ctx.col, lamps: ctx.lamps, barrels: ctx.barrels, emitters: ctx.emitters,
     dry: { x0: 0, z0: 0, x1: 0, z1: 0, y: 0 }, // nieva en todas partes
     hum: [], fire: null,

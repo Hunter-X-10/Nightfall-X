@@ -1,4 +1,4 @@
-// NIGHTFALL — arranque, estados de juego y bucle principal.
+// NIGHTFALL-X — arranque, estados de juego y bucle principal.
 import * as THREE from 'three';
 import { setAnisotropy } from './textures.js';
 import { createSurfaces, createMaterials, WET, SNOW } from './materials.js';
@@ -20,6 +20,7 @@ import { Net, TEAMS, FLAG, WEAPON_SHIFT, LEAN_SHIFT } from './net.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Lobby } from './lobby.js';
 import { Armory } from './armory.js';
+import { Survival, loadRecords, fmt } from './survival.js';
 import { SPAWN } from './layout.js';
 import { clamp, damp } from './utils.js';
 
@@ -151,11 +152,13 @@ async function boot() {
   envHidden.push(weapon.root);
   const enemies = (g.enemies = new Enemies(scene, world.col, fx, audio, surf, world.cover));
   enemies.spawn(world.enemies);
-  const combat = new Combat(g);
+  const combat = (g.combat = new Combat(g));
+  const survival = (g.survival = new Survival(g, scene));
+  combat.onKill = (e, part) => survival.onKill(e, part);
   let hurtFlash = 0; let endTimer = 0;
 
   // ---------- Multijugador ----------
-  let mode = 'solo'; // solo | online
+  let mode = 'solo'; // solo (misión) | survival | online
   let menuOpen = false; // menú abierto durante una partida en línea (el juego no se detiene)
   let respawnT = 0; let sendT = 0; let shieldT = 0;
   let matchEnd = null; // resultado recibido del servidor al terminar la partida
@@ -226,6 +229,7 @@ async function boot() {
     world.group.visible = true;
     world.emitters.forEach((e) => fx.addEmitter(e));
     player.col = world.col; player.bounds = world.bounds;
+    enemies.col = world.col; enemies.cover = world.cover; enemies.lights = world.env.flashlight;
     reflection.hidden[0] = world.ground.mesh;
     weather.setDry(world.dry);
     applyEnv(world.env);
@@ -261,10 +265,13 @@ async function boot() {
     const online = m === 'online';
     enemies.setActive(!online);
     combat.mission = !online;
+    combat.survival = m === 'survival';
+    if (m !== 'survival') survival.stop();
     $('btn-restart').classList.toggle('hidden', online);
+    $('btn-restart').textContent = m === 'survival' ? 'REINICIAR' : 'REINICIAR MISIÓN';
     $('btn-leave').textContent = online ? 'SALIR DE LA PARTIDA' : 'SALIR AL MENÚ';
     $('pause-title').textContent = online ? 'MENÚ' : 'PAUSA';
-    $('objective-label').textContent = online ? 'SALA' : 'OBJETIVO';
+    $('objective-label').textContent = online ? 'SALA' : m === 'survival' ? 'SUPERVIVENCIA' : 'OBJETIVO';
     hud.setOnline(online);
   };
 
@@ -275,7 +282,7 @@ async function boot() {
     hurtFlash = 0; endTimer = 0; respawnT = 0; sendT = 0; shieldT = 0; matchEnd = null; menuOpen = false;
     state = 'intro'; stateT = 0; fade = 0; fadeTarget = 1;
     armory.hide();
-    for (const id of ['menu', 'end', 'pause', 'mp', 'lobby']) $(id).classList.add('hidden');
+    for (const id of ['menu', 'end', 'pause', 'mp', 'lobby', 'survival']) $(id).classList.add('hidden');
     document.body.classList.add('cine');
     weapon.root.visible = true;
     input.enabled = true;
@@ -289,6 +296,17 @@ async function boot() {
     begin(SPAWN);
     hud.objective('Infiltra la base: cruza el control de acceso', 'Linterna: F');
   };
+
+  // Supervivencia en el mapa `id`: oleadas sin fin (ver survival.js).
+  const startSurvival = (id) => {
+    setMode('survival');
+    useMap(id);
+    weapon.allow(0);
+    begin(survival.startSpot(id));
+    survival.start(id);
+  };
+  // Volver a jugar al mismo modo (pantalla final y botón de reinicio de la pausa).
+  const playAgain = () => (mode === 'survival' ? startSurvival(survival.map) : startMission());
 
   // Punto libre para aparecer: de las zonas del equipo, la más alejada de los rivales (al azar si da igual).
   const pickSpawn = (team) => {
@@ -339,11 +357,33 @@ async function boot() {
     state = 'menu'; stateT = 0; fade = 0;
     hud.show(false);
     document.body.classList.remove('cine');
-    for (const id of ['end', 'pause', 'mp', 'lobby']) $(id).classList.add('hidden');
+    for (const id of ['end', 'pause', 'mp', 'lobby', 'survival']) $(id).classList.add('hidden');
     $('menu').classList.remove('hidden');
   };
   // Tras una partida en línea: de vuelta a la sala de espera, sin salir de ella.
   const toLobby = () => { toMenu(); $('menu').classList.add('hidden'); lobby.showRoom(); };
+
+  // Elección de mapa para la supervivencia, con el récord de cada uno.
+  const openSurvival = () => {
+    const records = loadRecords();
+    const list = $('survival-maps');
+    list.textContent = '';
+    MAPS.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.className = 'btn ghost map-pick';
+      const r = records[i];
+      const name = document.createElement('b'); name.textContent = m.name;
+      const desc = document.createElement('span'); desc.textContent = m.desc;
+      const rec = document.createElement('span'); rec.className = 'rec';
+      rec.textContent = r ? `RÉCORD ${fmt(r.score)} · OLEADA ${r.wave}` : 'SIN RÉCORD';
+      b.append(name, desc, rec);
+      b.addEventListener('click', () => startSurvival(i));
+      list.appendChild(b);
+    });
+    $('menu').classList.add('hidden');
+    $('survival').classList.remove('hidden');
+    for (let i = 1; i < MAPS.length; i++) preloadMap(i);
+  };
 
   const lobby = new Lobby(net, { onBack: () => $('menu').classList.remove('hidden') });
   const armory = new Armory(weapon, { onBack: () => $('menu').classList.remove('hidden') });
@@ -421,6 +461,20 @@ async function boot() {
     hud.show(false);
     const acc = combat.shots ? Math.round((combat.hits / combat.shots) * 100) : 0;
     const mm = Math.floor(combat.time / 60); const ss = String(Math.floor(combat.time % 60)).padStart(2, '0');
+    if (mode === 'survival') {
+      const prev = survival.finish();
+      const s = survival;
+      const cleared = s.phase === 'rest' ? s.wave : s.wave - 1;
+      $('end-pre').textContent = `SUPERVIVENCIA · ${MAPS[s.map].name}`;
+      $('end-title').textContent = s.newRecord ? 'NUEVO RÉCORD' : 'CAÍDO EN COMBATE';
+      $('end-stats').innerHTML = `<span>PUNTOS</span><span>${fmt(s.score)}</span><span>OLEADAS SUPERADAS</span><span>${cleared}</span>`
+        + `<span>BAJAS</span><span>${combat.kills}</span><span>DISPAROS A LA CABEZA</span><span>${combat.headshots}</span>`
+        + `<span>PRECISIÓN</span><span>${acc} %</span><span>TIEMPO</span><span>${mm}:${ss}</span>`
+        + (prev.score && !s.newRecord ? `<span>RÉCORD</span><span>${fmt(prev.score)} · oleada ${prev.wave}</span>` : '');
+      endLayout(false);
+      $('end').classList.remove('hidden');
+      return;
+    }
     $('end-pre').textContent = win ? 'MISIÓN' : 'OPERADOR';
     $('end-title').textContent = win ? 'COMPLETADA' : 'CAÍDO EN COMBATE';
     $('end-stats').innerHTML = `<span>TIEMPO</span><span>${mm}:${ss}</span><span>BAJAS</span><span>${combat.kills} / ${enemies.list.length}</span>`
@@ -455,8 +509,10 @@ async function boot() {
   // Si se pierde la captura sin pasar por la pausa, un clic en el juego la recupera.
   renderer.domElement.addEventListener('click', () => { if (!NOLOCK && state === 'playing' && !input.locked) input.lock(); });
   $('btn-start').addEventListener('click', startMission);
-  $('btn-again').addEventListener('click', startMission);
-  $('btn-restart').addEventListener('click', () => { audio.resume(); startMission(); });
+  $('btn-again').addEventListener('click', playAgain);
+  $('btn-restart').addEventListener('click', () => { audio.resume(); playAgain(); });
+  $('btn-survival').addEventListener('click', openSurvival);
+  $('btn-survival-back').addEventListener('click', () => { $('survival').classList.add('hidden'); $('menu').classList.remove('hidden'); });
   $('btn-mp').addEventListener('click', () => lobby.open());
   $('btn-armory').addEventListener('click', () => armory.show());
   $('btn-leave').addEventListener('click', () => { if (mode === 'online') net.leave(); else audio.resume(); toMenu(); });
@@ -512,6 +568,7 @@ async function boot() {
       enemies.update(dt, player, combat);
       player.regen(dt);
       combat.update(dt);
+      if (mode === 'survival' && state !== 'ended') survival.update(dt);
       if (mode === 'online') {
         if (matchEnd) {
           if (state !== 'ended' && (endTimer -= dt) <= 0) showMatchEnd(matchEnd);
@@ -604,17 +661,19 @@ async function boot() {
   try { await renderer.compileAsync(scene, camera); } catch { /* compilación perezosa */ }
   requestAnimationFrame((t) => { last = t; tick(t); });
   const btn = $('btn-start');
-  btn.disabled = false; btn.textContent = 'JUGAR MISIÓN';
+  btn.disabled = false; btn.querySelector('.mi-desc').textContent = 'Infiltra la base y llega al almacén';
   $('btn-mp').disabled = false;
   $('btn-armory').disabled = false;
+  $('btn-survival').disabled = false;
   if (params.get('sala')) lobby.open(params.get('sala'));
   if (DEBUG) $('fps-counter').classList.remove('hidden');
 
   window.__game = {
-    ready: false, player, weapon, enemies, combat, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, useMap,
+    ready: false, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, useMap,
     get world() { return world; },
     get mode() { return mode; },
     start: startMission,
+    startSurvival,
     teleport(x, z, yawDeg = 0, pitchDeg = 0) { player.pos.set(x, 0, z); player.vel.set(0, 0, 0); player.yaw = THREE.MathUtils.degToRad(yawDeg); player.pitch = THREE.MathUtils.degToRad(pitchDeg); },
     stats() {
       const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info');

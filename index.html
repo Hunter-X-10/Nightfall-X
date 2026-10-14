@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NIGHTFALL — Demo FPS</title>
+  <title>NIGHTFALL-X</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/style.css">
   <script type="importmap">
@@ -81,30 +81,58 @@
 
   <!-- Menú principal -->
   <div id="menu" class="screen">
+    <!-- Marco: esquinas de visor -->
+    <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
     <div class="menu-inner">
-      <div class="pre">OPERACIÓN</div>
-      <h1>NIGHTFALL</h1>
-      <div class="sub">SECTOR 7 · INSTALACIÓN ABANDONADA · 03:42</div>
-      <button id="btn-start" class="btn" disabled>CARGANDO…</button>
-      <button id="btn-mp" class="btn ghost" disabled>MULTIJUGADOR</button>
-      <button id="btn-armory" class="btn ghost" disabled>ARMERÍA</button>
-      <div class="controls">
-        <span><b>WASD</b> moverse</span>
-        <span><b>RATÓN</b> mirar</span>
-        <span><b>CLIC IZQ</b> disparar</span>
-        <span><b>CLIC DER</b> apuntar</span>
-        <span><b>R</b> recargar</span>
-        <span><b>SHIFT</b> sprint</span>
-        <span><b>CTRL / C</b> agacharse</span>
-        <span><b>ESPACIO</b> saltar</span>
-        <span><b>ESC</b> pausa</span>
-        <span><b>F</b> linterna</span>
-        <span><b>1 · 2 · 3</b> fusil, pistola, cuchillo</span>
-        <span><b>RUEDA</b> cambiar de arma</span>
-        <span><b>Q / E</b> asomarse (agachado junto a una cobertura)</span>
-        <span><b>TAB</b> marcador (en línea)</span>
+      <div class="status"><span class="live"></span>OPERACIÓN EN CURSO<span class="sep">//</span>SECTOR 7 · 03:42</div>
+      <h1 class="logo">NIGHTFALL<span class="x">-X</span></h1>
+      <div class="sub">INSTALACIÓN ABANDONADA · NOCHE DE TORMENTA</div>
+
+      <nav class="main-menu">
+        <button id="btn-start" class="mi primary" disabled>
+          <span class="mi-num">01</span><span class="mi-label">JUGAR MISIÓN</span><span class="mi-desc">Cargando…</span>
+        </button>
+        <button id="btn-survival" class="mi" disabled>
+          <span class="mi-num">02</span><span class="mi-label">SUPERVIVENCIA</span><span class="mi-desc">Oleadas sin fin en 3 mapas</span>
+        </button>
+        <button id="btn-mp" class="mi" disabled>
+          <span class="mi-num">03</span><span class="mi-label">MULTIJUGADOR</span><span class="mi-desc">ALFA contra BRAVO, en línea</span>
+        </button>
+        <button id="btn-armory" class="mi" disabled>
+          <span class="mi-num">04</span><span class="mi-label">ARMERÍA</span><span class="mi-desc">Llaveros para tus armas</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Controles, abajo -->
+    <div class="menu-foot">
+      <div class="keys">
+        <div class="key-group">
+          <div class="kg-title">MOVIMIENTO</div>
+          <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse</span>
+          <span><kbd>SHIFT</kbd> sprint</span>
+          <span><kbd>ESPACIO</kbd> saltar</span>
+          <span><kbd>CTRL</kbd><kbd>C</kbd> agacharse</span>
+          <span><kbd>Q</kbd><kbd>E</kbd> asomarse a cubierto</span>
+        </div>
+        <div class="key-group">
+          <div class="kg-title">COMBATE</div>
+          <span><kbd>CLIC IZQ</kbd> disparar</span>
+          <span><kbd>CLIC DER</kbd> apuntar</span>
+          <span><kbd>R</kbd> recargar</span>
+          <span><kbd>V</kbd> cuchillo rápido</span>
+          <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> o <kbd>RUEDA</kbd> armas</span>
+        </div>
+        <div class="key-group">
+          <div class="kg-title">OTROS</div>
+          <span><kbd>F</kbd> linterna</span>
+          <span><kbd>TAB</kbd> marcador en línea</span>
+          <span><kbd>ESC</kbd> pausa</span>
+          <span><kbd>F11</kbd> pantalla completa</span>
+        </div>
       </div>
-      <div class="tip">Se recomiendan auriculares · Pantalla completa con F11</div>
+      <div class="tip">Se recomiendan auriculares</div>
     </div>
   </div>
 
@@ -117,6 +145,17 @@
       <div id="armory-grid" class="charm-grid"></div>
       <div class="tip">Cuelga de tu arma en primera persona y se guarda en este navegador.</div>
       <button id="btn-armory-back" class="link">← VOLVER</button>
+    </div>
+  </div>
+
+  <!-- Supervivencia: elección de mapa (los botones los crea main.js con el récord de cada uno) -->
+  <div id="survival" class="screen hidden">
+    <div class="menu-inner">
+      <div class="pre">SUPERVIVENCIA</div>
+      <h2>OLEADAS</h2>
+      <div class="sub">Aguanta todo lo que puedas · 20 s de descanso entre oleadas · los caídos sueltan munición</div>
+      <div id="survival-maps" class="map-list"></div>
+      <button id="btn-survival-back" class="link">← VOLVER</button>
     </div>
   </div>
 

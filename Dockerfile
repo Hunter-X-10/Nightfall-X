@@ -1,4 +1,4 @@
-# Imagen del servidor de NIGHTFALL: sirve el juego y lleva las salas en línea.
+# Imagen del servidor de NIGHTFALL-X: sirve el juego y lleva las salas en línea.
 # Vale para cualquier alojamiento de contenedores (Hugging Face Spaces, Back4app Containers, entre otros).
 FROM node:22-alpine
 
