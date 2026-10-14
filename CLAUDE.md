@@ -1,4 +1,4 @@
-# NIGHTFALL — notas para Claude
+# NIGHTFALL-X — notas para Claude
 
 Shooter en primera persona para el navegador hecho con Three.js. Tiene una misión en solitario contra IA y partidas en línea por equipos (ALFA contra BRAVO). Está publicado en https://nightfall-x.pages.dev y el repositorio es https://github.com/Hunter-X-10/Nightfall-X (licencia MIT, autor "Alexus"). El nombre "Nightfall-X" sirve para distinguirlo de otros proyectos llamados Nightfall; antes estaba en `alexlmdmca-creator/nightfall`, que redirige al nuevo.
 
@@ -53,6 +53,14 @@ Parámetros útiles en la URL:
 - **Llaveros**: `src/charms.js` tiene el catálogo `CHARMS`, los modelos y un péndulo movido por la aceleración del arma en el mundo.
   - Se eligen en la armería (`src/armory.js`, botón ARMERÍA del menú). Ahí el arma se expone con `Weapon.showcase()`.
   - Se guardan en `localStorage` (`nightfall.charms`) y solo los ve el propio jugador; no viajan por la red.
+- **Supervivencia** (botón SUPERVIVENCIA del menú, `src/survival.js`): oleadas sin fin en cualquiera de los 3 mapas. Es solo local, sin red. `mode` vale `'survival'` y `combat.survival` quita los objetivos de la misión.
+  - Oleada n: `FIRST_WAVE + WAVE_STEP·(n−1)` enemigos (4, 7, 10…), como mucho `MAX_ALIVE` (8) a la vez; el resto entra de refuerzo. Cada oleada sube `combat.difficulty` (puntería) y baja `enemies.reactK` (reacción), con tope.
+  - Al superar una oleada: bonus de puntos, vida al máximo, fusil a 200 de reserva como mínimo (`REFILL`), pistola llena, bidones repuestos y 20 s de descanso (`REST_TIME`).
+  - Cada baja suelta una caja de munición (+10 balas de fusil al pasar por encima). Las cajas son un único `InstancedMesh`.
+  - Se empieza donde la misión en Sector 7 (los enemigos salen de la base) y lo más cerca posible del centro en La Solana y Muelle Norte (salen de una franja a lo largo de todo el borde). Siempre a 24-65 m y fuera de la vista.
+  - Reutiliza los 10 soldados de la misión: `enemies.bench()` los deja fuera de juego (`e.off`, como muertos y ocultos) y `enemies.enter()` los mete ya alerta. Si no queda ninguno libre, se recicla un cuerpo que no se vea.
+  - Con `enemies.hunt`, la IA vuelve a saber cada 5-8 s dónde anda el jugador (`track`), cambia a una cobertura más cercana si está a más de 22 m y, sin cobertura, avanza hacia él. Para rodear edificios sigue `src/navgrid.js`: una rejilla de 0,8 m con los obstáculos de `colliders.js` y la distancia andando desde la celda del jugador (`enemies.nav`, solo en supervivencia).
+  - Los récords por mapa se guardan en `localStorage` (`nightfall.survival`). En pruebas: `__game.startSurvival(id)` y `__game.survival` (`restT = 0.05` salta el descanso).
 - **Red**:
   - `src/roomCore.js` tiene la lógica de salas, sin transporte.
   - `rooms.js` y `server.js` la sirven por WebSocket.
@@ -68,6 +76,8 @@ Parámetros útiles en la URL:
 - **Asomarse: tres números enlazados.** La cámara local se aparta `LEAN_DIST` (0,38, `player.js`). El soldado remoto lo imita con `LEAN_HIP` (0,15) y `LEAN_SPINE` (0,42 rad) de `enemyModel.js`, porque la cabeza está a 0,57 m del pivote de la columna. Las cápsulas de `remotePlayers.raycast` usan esas mismas constantes. Si cambias uno, recalcula los otros y comprueba que la cápsula de la cabeza sigue centrada en la cabeza del modelo.
 - **Teclas Q/E.** Son para asomarse. Q dejó de ser "arma anterior": las armas se cambian con la rueda y 1-2-3. V es el golpe rápido.
 - **Golpe rápido: tiempos compartidos.** `TAKEDOWN_STAB` y `TAKEDOWN_TIME` (`enemyModel.js`) los usan a la vez la animación en primera persona (`weapon.js`), el bloqueo del jugador (`player.js`) y la pose de la víctima (IA y remotos). Cámbialos solo ahí. La pose de la víctima no toca las cápsulas de impacto porque solo se aplica a quien ya no recibe disparos.
+- **Cobertura de La Solana y Muelle Norte.** Antes estos mapas devolvían `cover: []`. Ahora exponen sus nodos para la IA de supervivencia, filtrados igual que en Sector 7. En línea no se usan.
+- **Supervivencia y misión comparten soldados.** `enemies.reset()` (al empezar la misión o volver al menú) los devuelve a todos a su patrulla con `off = false`, y `setMode` llama a `survival.stop()`, que quita `hunt`, `nav` y la dificultad. `useMap` cambia `enemies.col`/`cover`/`lights` al mapa en uso.
 - **Probar el golpe rápido.** Necesita un sitio despejado: en La Solana, `teleport(-9, 25, 0)` y colocar un enemigo a 1,3 m delante, de espaldas (`e.x`, `e.z`, `e.yaw`, `e.wait = 999`; parchea `enemies.engage` para que no se gire). Para forzar el tipo, fija `Math.random` antes de `input.pressed.add('KeyV')` (< 2/3 remate). Para fotografiar fases concretas, envuelve `requestAnimationFrame` y retén los fotogramas cuando `weapon.quick.t` llegue al instante deseado.
 - **Armas: anclajes fijos.** `SIGHT_Y`, `PISTOL_SIGHT_Y`, `MUZZLE` y `EJECT`, la lente de la mira y las piezas que anima `weapon.js` (`bolt`, `mag`, `slide`, `leftArm`, `rightArm`, `lens`, `lampLens`, `charm`) deben conservar posición y nombre. Si no, se desalinean la mira, la recarga o los efectos.
 - **Acabado de las armas.** Fusil y pistola usan un grano fino y mate. El normal map de gotas (`surf.glassDrops`) en piezas grandes parecía abolladuras y al usuario no le gustó. El cuchillo conserva el acabado antiguo (`knifeBlack`/`knifeDark`).
@@ -119,14 +129,37 @@ Parámetros útiles en la URL:
     - En línea solo el atacante ve la animación.
     - Se descartó el remate en tercera persona tipo CoD moderno: demasiado para este juego.
     - El usuario lo probó en línea y funciona.
+  - **Cambio de nombre**:
+    - El repositorio pasó a llamarse `Hunter-X-10/Nightfall-X`, a juego con la web `nightfall-x.pages.dev`.
+    - Se actualizaron el remoto de git, `CLAUDE.md`, `LICENSE` (`Alexus (Hunter-X-10)`) y el título del README (`NIGHTFALL-X`).
+  - Commits de la sesión:
+    - `0b7a70e`: resistencia y golpe rápido.
+    - `160fc19`: repositorio nuevo en `CLAUDE.md` y `LICENSE`.
+    - `7737eb4`: título del README.
+- **Sesión del 14 de octubre de 2026 (segunda parte)**:
+  - El usuario descartó la supresión, más bidones y el disparo a ciegas, y eligió las oleadas.
+  - **Modo supervivencia**, con el diseño del usuario (detalles en Arquitectura):
+    - Se elige entre los 3 mapas. En La Solana y Muelle Norte se empieza en el centro y los enemigos vienen de todos lados. En Sector 7 se empieza donde la misión y salen de la base (decisión de Claude, aceptada).
+    - Oleadas infinitas: 4 enemigos y +3 por oleada, 8 a la vez como mucho.
+    - 20 s de descanso con el fusil a 200 de reserva. Cada enemigo suelta 10 balas.
+    - Puntuación (baja, cabeza, cuchillo y bonus por oleada) y récord por mapa.
+    - Hizo falta la rejilla de navegación (`src/navgrid.js`): con la IA de la misión, los que salían del borde se quedaban empujando contra las paredes. También avanzan de cobertura en cobertura si están lejos.
+    - El usuario lo probó y le gustó ("está perfecto el modo").
+  - **Nombre NIGHTFALL-X dentro del juego**: menú, `<title>`, mensaje del servidor y comentarios de cabecera.
+  - **Menú de inicio rediseñado**, a gusto del usuario:
+    - Línea de estado con punto rojo, logo con "-X" en ámbar y entradas numeradas con descripción, con barra y brillo ámbar al pasar el ratón.
+    - Controles como teclas, agrupados abajo (se añadió la V), y esquinas de visor.
+    - Estilos en la sección "Menú principal" de `css/style.css`. El texto "JUGAR MISIÓN" ya no cambia al cargar: `main.js` rellena `.mi-desc`.
+  - Commits: `933e8b6` (supervivencia, nombre y menú) y el de esta documentación.
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
-  - Siguiente en la lista: supresión (2-4 h, no toca la red), oleadas en la misión, o deslizamiento + disparo a ciegas juntos. Los dos últimos comparten bit de estado, pose remota y cápsulas. El siguiente bit libre de `flags` es el 11.
+  - Pasar la pausa, la armería, las salas y la pantalla final al estilo del menú nuevo (se ofreció; siguen con los botones de antes).
+  - Al usuario no le interesan la supresión, más bidones ni el disparo a ciegas. Siguen en la lista el deslizamiento, trepar, las granadas, los botiquines y una IA más lista. El siguiente bit libre de `flags` es el 11.
 
 ## Ideas de mecánicas (brainstorming, octubre 2026)
 
-Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia** y **golpe rápido con V** (ver Arquitectura). La "cobertura pegada" al estilo Gears/Division se descartó: pide cámara en tercera persona, poses nuevas y transiciones.
+Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia**, **golpe rápido con V** y **supervivencia por oleadas** (ver Arquitectura). La "cobertura pegada" al estilo Gears/Division se descartó: pide cámara en tercera persona, poses nuevas y transiciones.
 
 **Movimiento**
 
@@ -148,7 +181,7 @@ Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia** y **golpe r
 **Mundo y misión**
 - Puertas y ventanas interactivas (abrir, cerrar, romper cristales).
 - Objetos que se mueven: cajas empujables, más bidones explosivos (ya los hay).
-- Oleadas o modo supervivencia en la misión en solitario, para rejugarla.
+- ~~Oleadas o modo supervivencia~~: hecho (ver Arquitectura).
 - Dificultad de la IA: que flanquee, lance granadas o busque cobertura y se asome.
 
 **Orden propuesto** (menos riesgo primero; comparten el bit de estado, la cápsula variable y la pose remota):
