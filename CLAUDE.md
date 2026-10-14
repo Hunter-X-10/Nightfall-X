@@ -39,6 +39,10 @@ Parámetros útiles en la URL:
   - `soldierGeometry(weapon, look)` usa los aspectos de `LOOKS`: 0 guardia de la misión, 1 ALFA (operador táctico), 2 BRAVO (insurgente).
   - El color de equipo va solo en parches, brazalete y pañuelo.
   - La IA (`src/enemies.js`) usa el aspecto 0; los jugadores remotos (`src/remotePlayers.js`) usan `team + 1`.
+- **Jugador y cobertura**: `src/player.js` lleva el movimiento (inercia, sprint, agacharse, salto) y la cámara (`applyCamera`).
+  - Agachado (Ctrl o la C) junto a un obstáculo que tape al menos hasta la cadera se está a cubierto (`inCover`): al pulsar agacharse a su lado o al llegar a él ya agachado. Se comprueba unas 10 veces por segundo con `col.coverInfo` (`src/colliders.js`), que ignora postes finos. Acercarse sin agacharse no hace nada: el usuario no quiere cobertura automática.
+  - A cubierto, Q/E asoman la cabeza `LEAN_DIST` (0,38 m) a cada lado (`player.lean`, recortado con un rayo para no atravesar paredes). Tras una cobertura baja (< 1,45 m), apuntar levanta al jugador para disparar por encima.
+  - `player.headX`/`headZ` son la posición real de la cabeza: la IA (`enemies.js`) la usa para ver y disparar al jugador.
 - **Armas en primera persona**: `src/viewmodel.js` construye los modelos con `profile()` (siluetas extruidas) y `finger()` (dedos). `src/weapon.js` lleva la lógica: disparo, recarga, retroceso y cambio de arma. Las definiciones están en `WEAPONS` y el daño en `DAMAGE` (`src/combat.js`).
 - **Llaveros**: `src/charms.js` tiene el catálogo `CHARMS`, los modelos y un péndulo movido por la aceleración del arma en el mundo.
   - Se eligen en la armería (`src/armory.js`, botón ARMERÍA del menú). Ahí el arma se expone con `Weapon.showcase()`.
@@ -48,10 +52,13 @@ Parámetros útiles en la URL:
   - `rooms.js` y `server.js` la sirven por WebSocket.
   - `src/p2p.js` la ejecuta en el navegador del anfitrión con PeerJS (modo de `dist/`).
   - Quien dispara decide el impacto; la víctima aplica el daño y avisa de su muerte; el servidor solo lleva el marcador.
+  - El estado de cada jugador es `[x, y, z, yaw, pitch, flags]` (`net.sendState`). `flags`: bits 0-5 de `FLAG` (CROUCH, SPRINT, AIM, LIGHT, DEAD, SHIELD), bits 6-7 el arma (`WEAPON_SHIFT`) y bits 8-9 hacia dónde se asoma (`LEAN_SHIFT`: 0 nada, 1 izquierda, 2 derecha). `roomCore.js` exige 6 elementos: para enviar más estado, usa bits nuevos en vez de alargar el array.
 
 ## Cosas que rompen fácilmente
 
 - **Zonas de impacto ≠ malla.** Los impactos se calculan con cápsulas a partir de la pose (`raycast` en `remotePlayers.js` y en `enemies.js`), no con la geometría. Puedes cambiar el aspecto de los soldados, pero respeta las alturas de cadera (0,95), hombros y cabeza. No toques los huesos, `ARM_UP`/`ARM_FORE` ni `poseSoldier` sin revisar los raycast.
+- **Asomarse: tres números enlazados.** La cámara local se aparta `LEAN_DIST` (0,38, `player.js`). El soldado remoto lo imita con `LEAN_HIP` (0,15) y `LEAN_SPINE` (0,42 rad) de `enemyModel.js`, porque la cabeza está a 0,57 m del pivote de la columna. Las cápsulas de `remotePlayers.raycast` usan esas mismas constantes. Si cambias uno, recalcula los otros y comprueba que la cápsula de la cabeza sigue centrada en la cabeza del modelo.
+- **Teclas Q/E.** Son para asomarse. Q dejó de ser "arma anterior": las armas se cambian con la rueda y 1-2-3.
 - **Armas: anclajes fijos.** `SIGHT_Y`, `PISTOL_SIGHT_Y`, `MUZZLE` y `EJECT`, la lente de la mira y las piezas que anima `weapon.js` (`bolt`, `mag`, `slide`, `leftArm`, `rightArm`, `lens`, `lampLens`, `charm`) deben conservar posición y nombre. Si no, se desalinean la mira, la recarga o los efectos.
 - **Acabado de las armas.** Fusil y pistola usan un grano fino y mate. El normal map de gotas (`surf.glassDrops`) en piezas grandes parecía abolladuras y al usuario no le gustó. El cuchillo conserva el acabado antiguo (`knifeBlack`/`knifeDark`).
 - **`ctx.rng` es una secuencia.** Llamarlo en código nuevo desplaza todo lo aleatorio que se genera después: cajas, bidones, carga del carguero. Para detalle nuevo, usa valores fijos.
@@ -71,6 +78,11 @@ Parámetros útiles en la URL:
    - Para ver modelos, un paso `eval` puede hacer `import('/src/enemyModel.js')` y colocar soldados en la escena.
    - La Solana (`__game.useMap(1)`) es de día y se ve mejor.
    - Sector 7 es de noche: sube `renderer.toneMappingExposure` solo para inspeccionar.
+   - Un paso con `"print": true` imprime lo que devuelve su `eval`.
+   - Para simular teclas: `__game.input.keys.add('KeyE')` / `.delete(...)`, `input.crouchToggle = true` (agacharse) e `input.aim = true` (apuntar). Para que la IA no moleste: `__game.enemies.setActive(false)` y `player.invulnerable = true`.
+   - Caja baja de Sector 7 para probar la cobertura: centro (-10.8, 29.2), 1,25 m de alto. Por ejemplo, `teleport(-9.45, 33.2, 90)`, agacharse y andar con D hasta su esquina. Ojo: hay postes finos cerca que desplazan el teletransporte.
+   - Para ver a un jugador remoto fuera de una partida, `remotes.sync([{ id, name, team, playing: true }], 0)` y llamar a `remotes.update` en cada fotograma rellenando `buf`, porque en la misión no se actualizan.
+   - Desactiva la linterna (`weapon.lightOn = false`) para capturas de cerca: quema a blanco.
 2. **Modo en línea**: `npm run test:online` tiene que terminar en "Todo correcto".
 3. **Versión publicable**: `npm run build` tiene que generar `dist/` sin errores.
 4. **Rendimiento**: `__game.stats()` da FPS, llamadas de dibujo y triángulos. Ojo: los triángulos por fotograma varían según toque o no actualizar sombras; para comparar, cuenta la geometría de `__game.world.group`.
@@ -85,4 +97,18 @@ Parámetros útiles en la URL:
   - Seis llaveros: calavera, bala, dado, granada, pato de goma y bidón.
   - Armería en el menú.
   - Más detalle en vehículos, contenedores, edificios, grúas y carguero.
-- **Pendiente**: probar con gente real y latencia de internet; decidir si se suaviza la linterna de cerca.
+- **Mecánicas (octubre 2026)**:
+  - Cobertura y asomarse con Q/E, con efecto en la IA y sincronizada en línea (commit `91ad15f`).
+- **Pendiente**:
+  - Probar con gente real y latencia de internet.
+  - Decidir si se suaviza la linterna de cerca.
+- **Ideas de mecánicas para más adelante**, por orden propuesto:
+  1. Deslizamiento.
+  2. Trepar obstáculos bajos.
+  3. Supresión (visión borrosa al recibir fuego cerca).
+  4. Granadas: frag, humo y cegadora.
+  5. Golpe cuerpo a cuerpo rápido.
+  6. Botiquines y armadura.
+  7. Puertas interactivas.
+  8. Oleadas en la misión.
+  9. IA que flanquea.
