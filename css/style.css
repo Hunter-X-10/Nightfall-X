@@ -188,6 +188,15 @@ h2 { font-size: 64px; margin: 0 0 22px; font-weight: 700; letter-spacing: 6px; f
 .opt-row input, .opt-row select { pointer-events: auto; accent-color: var(--accent); }
 .opt-row select { background: #0c1218; color: var(--hud); border: 1px solid rgba(255, 255, 255, 0.3); padding: 4px 8px; font: inherit; }
 
+/* ---------- Armería ---------- */
+#armory h2 { font-size: 46px; margin-bottom: 22px; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 420px; max-width: 82vw; margin-bottom: 18px; }
+.charm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 420px; max-width: 82vw; }
+.charm-grid .btn:first-child { grid-column: 1 / -1; }
+.tabs .btn:hover:not(.on), .charm-grid .btn:hover:not(.on) { background: rgba(255, 179, 71, 0.16); color: var(--hud); border-color: var(--accent); }
+.tabs .btn.on, .charm-grid .btn.on { background: var(--accent); color: #06090d; border-color: var(--accent); }
+#armory .tip { margin-top: 18px; max-width: 420px; }
+
 /* ---------- Multijugador ---------- */
 #mp h2, #lobby h2 { font-size: 46px; margin-bottom: 26px; }
 #mp input {

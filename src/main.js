@@ -19,6 +19,7 @@ import { Combat } from './combat.js';
 import { Net, TEAMS, FLAG, WEAPON_SHIFT } from './net.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Lobby } from './lobby.js';
+import { Armory } from './armory.js';
 import { SPAWN } from './layout.js';
 import { clamp, damp } from './utils.js';
 
@@ -272,6 +273,7 @@ async function boot() {
     input.crouchToggle = false;
     hurtFlash = 0; endTimer = 0; respawnT = 0; sendT = 0; shieldT = 0; matchEnd = null; menuOpen = false;
     state = 'intro'; stateT = 0; fade = 0; fadeTarget = 1;
+    armory.hide();
     for (const id of ['menu', 'end', 'pause', 'mp', 'lobby']) $(id).classList.add('hidden');
     document.body.classList.add('cine');
     weapon.root.visible = true;
@@ -343,6 +345,7 @@ async function boot() {
   const toLobby = () => { toMenu(); $('menu').classList.add('hidden'); lobby.showRoom(); };
 
   const lobby = new Lobby(net, { onBack: () => $('menu').classList.remove('hidden') });
+  const armory = new Armory(weapon, { onBack: () => $('menu').classList.remove('hidden') });
   net.handlers = {
     joined: () => { lobby.showRoom(); preloadMap(net.room.settings.map); },
     room: () => {
@@ -452,6 +455,7 @@ async function boot() {
   $('btn-again').addEventListener('click', startMission);
   $('btn-restart').addEventListener('click', () => { audio.resume(); startMission(); });
   $('btn-mp').addEventListener('click', () => lobby.open());
+  $('btn-armory').addEventListener('click', () => armory.show());
   $('btn-leave').addEventListener('click', () => { if (mode === 'online') net.leave(); else audio.resume(); toMenu(); });
   $('btn-end-lobby').addEventListener('click', toLobby);
   $('btn-end-menu').addEventListener('click', () => { net.leave(); toMenu(); });
@@ -488,12 +492,14 @@ async function boot() {
 
     // --- Lógica ---
     if (state === 'menu') {
+      if (armory.open && stateT > 9) stateT = 9; // en la armería no se cambia de plano: se está mirando el arma
       if (stateT > 11) { stateT = 0; shot = (shot + 1) % menuShots.length; }
       fadeTarget = stateT < 0.2 || stateT > 10.2 ? 0 : 1;
       placeMenuCam(stateT);
       player.pos.copy(far);
-      weapon.root.visible = false;
+      weapon.root.visible = armory.open;
       weapon.light.intensity = 0;
+      if (armory.open) weapon.showcase(dt, time, armory.slot);
       enemies.update(dt, player, combat);
     } else {
       if (state === 'intro' && stateT > 2.3) { state = 'playing'; document.body.classList.remove('cine'); hud.show(true); }
@@ -596,11 +602,12 @@ async function boot() {
   const btn = $('btn-start');
   btn.disabled = false; btn.textContent = 'JUGAR MISIÓN';
   $('btn-mp').disabled = false;
+  $('btn-armory').disabled = false;
   if (params.get('sala')) lobby.open(params.get('sala'));
   if (DEBUG) $('fps-counter').classList.remove('hidden');
 
   window.__game = {
-    ready: false, player, weapon, enemies, combat, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, useMap,
+    ready: false, player, weapon, enemies, combat, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, useMap,
     get world() { return world; },
     get mode() { return mode; },
     start: startMission,

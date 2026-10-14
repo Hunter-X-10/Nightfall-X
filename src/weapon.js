@@ -2,6 +2,7 @@
 // (o tajo cuerpo a cuerpo), dispersión, retroceso, recarga animada, balanceo y linterna.
 import * as THREE from 'three';
 import { buildViewModel, buildPistolModel, buildKnifeModel, SIGHT_Y, PISTOL_SIGHT_Y } from './viewmodel.js';
+import { Charm, loadCharms } from './charms.js';
 import { FRAME } from './sprites.js';
 import { tracer } from './fxRecipes.js';
 import { clamp, damp, lerp, rand, smoothstep as ss } from './utils.js';
@@ -32,6 +33,9 @@ export const WEAPONS = [
 
 const SWAP_DOWN = 0.15; const SWAP_UP = 0.22; // segundos para bajar un arma y subir la siguiente
 const SWING_TIME = 0.4; const SWING_HIT = 0.32; // duración del tajo y momento (0-1) en que alcanza
+// Armería: dónde se expone cada arma ante la cámara y con cuánta luz (están a distinta distancia del foco).
+const SHOW_POSE = [[0.14, 0.005, -0.38], [0.1, 0.02, -0.19], [0.1, 0.01, -0.2]];
+const SHOW_LIGHT = [1.4, 0.4, 0.4];
 const DEG = Math.PI / 180;
 
 const _o = new THREE.Vector3();
@@ -70,7 +74,44 @@ export class Weapon {
     this.lightPos = new THREE.Vector3();
     this.allowed = WEAPONS.map(() => true); // armas disponibles (lo decide el ajuste de la partida)
     this.cur = RIFLE;
+    this.charms = this.slots.map(() => null); // llavero de cada arma (null = ninguno)
+    loadCharms().forEach((id, i) => this.setCharm(i, id));
     this.reset();
+  }
+
+  // Cuelga un llavero (identificador de CHARMS) del arma `i`, en lugar del que tuviera.
+  setCharm(i, id) {
+    this.charms[i]?.dispose();
+    this.charms[i] = id === 'none' ? null : new Charm(id);
+    if (this.charms[i]) this.slots[i].vm.charm.add(this.charms[i].group);
+  }
+
+  // Armería: expone el arma `i` de perfil, girando despacio, con el llavero de cara a la cámara.
+  showcase(dt, time, i) {
+    this.root.visible = true;
+    this.slots.forEach((s, k) => { s.vm.root.visible = k === i; });
+    const vm = this.slots[i].vm;
+    // Piezas móviles en su sitio, por si la última partida las dejó a medias.
+    if (vm.mag) { vm.mag.position.y = i === RIFLE ? -0.085 : 0; vm.mag.visible = true; }
+    if (vm.leftArm) vm.leftArm.position.set(0, 0, 0);
+    if (vm.slide) vm.slide.position.z = 0;
+    if (vm.lensUniforms) vm.lensUniforms.uGain.value = 0;
+    if (vm.lampLens) vm.lampLens.visible = false;
+    for (const arm of [vm.leftArm, vm.rightArm]) if (arm) arm.visible = false; // sólo el arma
+    const [x, y, z] = SHOW_POSE[i];
+    vm.root.position.set(x, y + Math.sin(time * 0.9) * 0.003, z);
+    vm.root.rotation.set(0.1, Math.PI / 2 - 0.25 + Math.sin(time * 0.5) * 0.5, 0);
+    this.fill.intensity = SHOW_LIGHT[i];
+    this.fill.color.setRGB(1, 0.96, 0.9);
+    const charm = this.charms[i];
+    if (charm) { charm.face = -Math.PI / 2; charm.update(dt, vm.root, vm.charm, this.camera); }
+  }
+
+  endShowcase() {
+    this.root.visible = false;
+    this.fill.intensity = 0.06;
+    for (const { vm } of this.slots) for (const arm of [vm.leftArm, vm.rightArm]) if (arm) arm.visible = true;
+    this.show(this.cur);
   }
 
   get slot() { return this.slots[this.cur]; }
@@ -122,6 +163,7 @@ export class Weapon {
   show(i) {
     this.cur = i;
     this.slots.forEach((s, k) => { s.vm.root.visible = k === i; });
+    this.charms[i]?.rest();
   }
 
   // Pide cambiar de arma: baja la actual, cambia y sube la nueva.
@@ -425,5 +467,8 @@ export class Weapon {
 
     vm.root.position.set(px * VM_SCALE, py * VM_SCALE, pz * VM_SCALE);
     vm.root.rotation.set(rx, ry, rz);
+
+    const charm = this.charms[this.cur];
+    if (charm) { charm.face = 0; charm.update(dt, vm.root, vm.charm, this.camera); }
   }
 }

@@ -14,6 +14,10 @@ const rbox = (w, h, d, r = 0.08) => new RoundedBoxGeometry(w, h, d, 3, r);
 function wheel(put, M, lx, ly, lz, r, w) {
   put(cylUV(r, r, w, 20, 0.9), M.tire, lx, ly, lz, 0, 0, Math.PI / 2);
   put(cylUV(r * 0.55, r * 0.55, w + 0.02, 12), M.darkSteel, lx, ly, lz, 0, 0, Math.PI / 2);
+  // Llanta y buje por la cara de fuera.
+  const out = Math.sign(lx) * (w / 2 + 0.014);
+  put(cylUV(r * 0.44, r * 0.5, 0.03, 12), M.metal(0x8c9196, { worn: true }), lx + out, ly, lz, 0, 0, Math.PI / 2);
+  put(cylUV(r * 0.17, r * 0.17, 0.08, 8), M.steel, lx + out, ly, lz, 0, 0, Math.PI / 2);
 }
 
 export function truck(ctx, x, z, yaw, tarp = true) {
@@ -42,6 +46,26 @@ export function truck(ctx, x, z, yaw, tarp = true) {
   }
   for (const s of [-1, 1]) for (const zz of [3.05, -0.75, -2.35]) wheel(put, M, s * 1.05, 0.56, zz, 0.56, 0.38);
   put(cylUV(0.5, 0.5, 0.3, 16, 0.9), M.tire, 0, 1.5, -3.75, Math.PI / 2);
+  // Calandra de lamas, matrícula y aros de los faros.
+  for (let i = 0; i < 5; i++) put(boxUV(1.4, 0.035, 0.03, 1), M.steel, 0, 1.5 + i * 0.1, 4.075, 0, 0, 0, 0);
+  put(boxUV(0.52, 0.16, 0.02, 1), M.metal(0xcfcbbd, { worn: true }), 0, 0.98, 4.17, 0, 0, 0, 0);
+  for (const s of [-1, 1]) {
+    put(cylUV(0.17, 0.17, 0.06, 14), M.darkSteel, s * 0.84, 1.75, 4.0, Math.PI / 2);
+    // Puerta: juntas, manilla y estribo; brazo del retrovisor.
+    for (const zz of [1.15, 2.45]) put(boxUV(0.02, 1.3, 0.03, 1), M.darkSteel, s * 1.215, 2.0, zz, 0, 0, 0, 0);
+    put(boxUV(0.03, 0.04, 0.16, 1), M.steel, s * 1.225, 1.95, 1.34, 0, 0, 0, 0);
+    put(boxUV(0.16, 0.05, 0.9, 1), M.darkSteel, s * 1.2, 1.12, 1.8);
+    put(boxUV(0.2, 0.04, 0.04, 1), M.darkSteel, s * 1.3, 2.5, 2.72, 0, 0, 0, 0);
+    // Nervios de la caja y pilotos traseros.
+    for (const zz of [-3.3, -2.4, -1.45, -0.5, 0.4]) put(boxUV(0.04, 0.9, 0.07, 1), M.darkSteel, s * 1.245, 1.6, zz, 0, 0, 0, 2);
+    put(boxUV(0.2, 0.12, 0.04, 1), M.glow(0xff2010, 0.7), s * 0.95, 1.22, -3.61, 0, 0, 0, 0);
+  }
+  put(boxUV(2.3, 0.12, 0.1, 1), M.darkSteel, 0, 0.98, -3.62);
+  // Escape vertical tras la cabina y depósito de combustible en el costado.
+  put(cylUV(0.07, 0.07, 1.9, 10), M.darkSteel, -1.3, 2.75, 0.74);
+  put(cylUV(0.09, 0.09, 0.5, 10), M.steel, -1.3, 3.1, 0.74);
+  put(cylUV(0.3, 0.3, 1.1, 14), M.metal(0x6a7076, { worn: true }), 1.0, 0.98, 0.75, Math.PI / 2);
+  for (const zz of [0.4, 1.1]) put(cylUV(0.31, 0.31, 0.05, 14), M.darkSteel, 1.0, 0.98, zz, Math.PI / 2);
   ctx.collider(x, z, 2.5, 7.9, 0, 3.4, yaw, 'metal');
   ctx.coverAround(x, z, 2.5, 7.9, yaw, false);
 }
@@ -66,6 +90,20 @@ export function jeep(ctx, x, z, yaw, color = 0x4a4d3a) {
   put(rbox(1.86, 0.08, 2.6, 0.03), M.tarp, 0, 2.3, -0.75);
   put(rbox(1.5, 0.5, 0.5, 0.1), M.plastic, 0, 1.25, -0.2);
   put(cylUV(0.42, 0.42, 0.26, 16, 0.9), M.tire, 0, 1.15, -2.36, Math.PI / 2);
+  // Calandra de barras, aros de los faros y marco del parabrisas.
+  for (let i = -3; i <= 3; i++) put(boxUV(0.03, 0.3, 0.03, 1), M.steel, i * 0.12, 1.3, 2.105, 0, 0, 0, 0);
+  put(boxUV(1.85, 0.05, 0.05, 1), M.darkSteel, 0, 2.29, 0.42);
+  put(boxUV(1.85, 0.05, 0.05, 1), M.darkSteel, 0, 1.51, 0.62);
+  for (const s of [-1, 1]) {
+    put(cylUV(0.135, 0.135, 0.05, 12), M.darkSteel, s * 0.68, 1.32, 2.06, Math.PI / 2);
+    put(boxUV(0.04, 0.14, 0.18, 1), M.darkSteel, s * 1.0, 1.75, 0.62);
+    put(boxUV(0.12, 0.08, 0.03, 1), M.glow(0xff2010, 0.7), s * 0.8, 1.05, -2.16, 0, 0, 0, 0);
+    // Banquetas (bajas: un plano del menú cruza la cabina y no deben taparlo) y rejillas del capó.
+    put(boxUV(0.5, 0.12, 0.5, 1), M.tarp, s * 0.45, 1.34, -0.42);
+    for (const zz of [1.0, 1.3]) put(boxUV(0.3, 0.012, 0.05, 1), M.darkSteel, s * 0.4, 1.596, zz, 0, 0, 0, 0);
+  }
+  put(boxUV(0.16, 0.46, 0.34, 1), body, 0.68, 1.2, -2.24); // bidón de reserva
+  put(cylUV(0.008, 0.008, 1.6, 5), M.darkSteel, -0.86, 2.1, -1.95, 0, 0, 0, 0); // antena
   ctx.collider(x, z, 1.95, 4.5, 0, 1.75, yaw, 'metal');
   ctx.coverAround(x, z, 1.95, 4.5, yaw, false);
 }
@@ -90,6 +128,16 @@ export function container(ctx, x, z, yaw, color = 'red', level = 0, long = false
   for (const sz of [-0.9, -0.3, 0.3, 0.9]) put(cylUV(0.022, 0.022, H - 0.4, 6), M.steel, L / 2 + 0.03, H / 2, sz, 1);
   put(boxUV(0.03, H - 0.3, 0.04, 1), M.darkSteel, L / 2 + 0.01, H / 2, 0, 0);
   for (const sz of [-0.6, 0.6]) put(boxUV(0.05, 0.1, 0.3, 1), M.steel, L / 2 + 0.04, 1.15, sz, 0);
+  // Detalle sólo en los que se ven de cerca (los apilados altos del carguero se quedan como están).
+  if (level <= 1) {
+    const plate = M.metal(0xcfcbbd, { worn: true });
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const yy of [0.065, H - 0.065]) put(boxUV(0.2, 0.13, 0.2, 1), M.darkSteel, sx * (L / 2 - 0.08), yy, sz * (Wd / 2 - 0.08)); // esquineras
+    for (const sz of [-1, 1]) {
+      put(boxUV(0.8, 0.28, 0.012, 1), plate, -sz * (L / 2 - 1.05), H - 0.62, sz * (Wd / 2 - 0.044), 0); // rótulo
+      for (const yy of [0.6, 2.0]) put(boxUV(0.05, 0.12, 0.08, 1), M.steel, L / 2 + 0.02, yy, sz * 1.1, 0); // bisagras
+    }
+    put(boxUV(0.02, 0.3, 0.45, 1), plate, L / 2 + 0.012, 1.75, 0.6, 0); // placa de datos
+  }
   ctx.collider(x, z, L, Wd, y0, y0 + H, yaw, 'metal', { foot: level === 0 });
   if (level === 0) {
     ctx.coverAround(x, z, L, Wd, yaw, false);

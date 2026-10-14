@@ -94,6 +94,17 @@ function hall(ctx) {
     ctx.group.add(bulb);
     ctx.lamp({ x, y: h - 1, z: 0, color: 0xffd9a8, intensity: 34, type: 'point', range: 13, bulb, strength: 0.6 });
   }
+  // Detalle exterior (sólo visual): pilastras, imposta de cubierta y equipos en el tejado.
+  const post = M.darkSteel;
+  for (const s of [-1, 1]) {
+    for (const x of [-hx, -5, 5, hx]) ctx.add(boxUV(0.26, h, 0.14, 1), post, xform(x, h / 2, s * (hz + 0.22)), 1);
+    for (const z of [-5, 5]) ctx.add(boxUV(0.14, h, 0.26, 1), post, xform(s * (hx + 0.22), h / 2, z), 1);
+    ctx.add(boxUV(hx * 2 + 1.1, 0.3, 0.08, 2), M.darkSteel, xform(0, h + 0.1, s * (hz + 0.52)), 1);
+    ctx.add(boxUV(0.08, 0.3, hz * 2 + 1.1, 2), M.darkSteel, xform(s * (hx + 0.52), h + 0.1, 0), 1);
+    ctx.add(boxUV(1.6, 1, 1.1, 1.5), M.metal(0x8c9196, { worn: true }), xform(s * 4.5, h + 0.75, 2.5));
+    ctx.add(cylUV(0.4, 0.4, 0.06, 14), M.darkSteel, xform(s * 4.5, h + 1.28, 2.5), 0);
+    ctx.add(cylUV(0.14, 0.14, 0.9, 8), M.darkSteel, xform(s * 7, h + 0.7, -3.5), 1);
+  }
   ctx.concreteRects.push({ x0: -hx - 4, x1: hx + 4, z0: -hz - 4, z1: hz + 4 });
 }
 
@@ -109,6 +120,11 @@ function base(ctx, s) {
     ctx.add(new THREE.PlaneGeometry(1.5, 1.3), M.glassDark, xform(s * 42.78, 2.4, z, 0, -s * Math.PI / 2, 0), 0);
   }
   ctx.add(boxUV(0.1, 2.25, 1.3, 1), M.metal(s < 0 ? 0x2f5078 : 0x7a3526, { worn: true }), xform(s * 42.86, 1.13, 0)); // puerta del color del equipo
+  // Detalle (sólo visual): marquesina de la puerta, depósito de agua en la azotea y bajante.
+  ctx.add(boxUV(1.1, 0.1, 2.0, 1), M.darkSteel, xform(s * 42.4, 2.5, 0));
+  ctx.add(cylUV(0.9, 0.9, 1.6, 14), M.metal(0x8c9196, { worn: true }), xform(s * 45.4, 6.1, -6));
+  for (const [dx, dz] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) ctx.add(boxUV(0.08, 0.5, 0.08, 1), M.darkSteel, xform(s * 45.4 + dx, 5.15, -6 + dz), 0);
+  ctx.add(cylUV(0.07, 0.07, 4.6, 8), M.darkSteel, xform(s * 42.82, 2.3, 10.4), 1);
   // Muro frontal: dos lienzos que dejan salida por el norte, por el centro y por el sur.
   for (const k of [-1, 1]) {
     wall(ctx, M.cinderDark, s * BASE_X, k * 4, s * BASE_X, k * 30, 3.4);

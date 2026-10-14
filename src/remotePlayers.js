@@ -1,6 +1,6 @@
-// Jugadores remotos: un soldado por jugador, movido por interpolación entre las instantáneas
-// que reparte el servidor, con cápsulas de impacto para los disparos y el nombre sobre la cabeza:
-// el de los compañeros se ve siempre; el de los rivales, sólo mientras se les apunta.
+// Jugadores remotos: un soldado por jugador, con el aspecto de su equipo, movido por interpolación entre
+// las instantáneas que reparte el servidor, con cápsulas de impacto para los disparos y el nombre sobre la
+// cabeza: el de los compañeros se ve siempre; el de los rivales, sólo mientras se les apunta.
 import * as THREE from 'three';
 import { createSoldier, poseSoldier, soldierGeometry } from './enemyModel.js';
 import { coneGeometry, coneMaterial, flare } from './volumetric.js';
@@ -8,7 +8,6 @@ import { FLAG, PART, TEAM_COLORS, WEAPON_SHIFT } from './net.js';
 import { angleDelta, clamp, damp, lerp, rand, rayCapsule } from './utils.js';
 
 const INTERP_MS = 120; // se dibuja algo en el pasado para tener siempre dos muestras entre las que interpolar
-const TEAM_TINT = [[0.55, 0.95, 2.1], [2.2, 0.72, 0.55]]; // multiplica el color del uniforme
 const TAG_H = 0.26;
 const NAME_LINGER = 1.2; // segundos que sigue visible el nombre de un rival tras dejar de apuntarle
 const SWING_TIME = 0.4;
@@ -17,14 +16,8 @@ const MUZZLE_Z = [0.7, 0.2, 0.3];
 const CONE_Z = [0.5, 0.2, 0.1];
 const _v = new THREE.Vector3();
 
-const _teamMat = [];
-function teamMaterial(base, team) {
-  if (!_teamMat[team]) {
-    _teamMat[team] = base.clone();
-    _teamMat[team].color.setRGB(...TEAM_TINT[team]);
-  }
-  return _teamMat[team];
-}
+// Aspecto del soldado (ver LOOKS en enemyModel.js) de cada equipo.
+const teamLook = (team) => team + 1;
 
 function nameTag(name, team) {
   const c = document.createElement('canvas');
@@ -75,7 +68,7 @@ export class RemotePlayers {
     s.mesh.visible = false; // hasta que llegue su primera posición
     this.scene.add(s.mesh);
     return {
-      id: p.id, name: null, team: -1, s, cone, fl, tag: null, baseMat: s.mesh.material, buf: [],
+      id: p.id, name: null, team: -1, s, cone, fl, tag: null, buf: [],
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, flags: 0, speed: 0, placed: false,
       killed: false, // baja confirmada por el servidor antes de que llegue en las instantáneas
       weapon: 0, swingT: 1, revealT: 0, tagA: 0,
@@ -85,7 +78,7 @@ export class RemotePlayers {
 
   dress(r, name, team) {
     r.name = name; r.team = team;
-    r.s.mesh.material = teamMaterial(r.baseMat, team);
+    r.s.mesh.geometry = soldierGeometry(r.weapon, teamLook(team));
     this.dropTag(r);
     r.tag = nameTag(name, team);
     r.s.mesh.add(r.tag);
@@ -221,7 +214,7 @@ export class RemotePlayers {
       const w = this.weaponOf(r);
       if (w !== r.weapon) {
         r.weapon = w;
-        r.s.mesh.geometry = soldierGeometry(w);
+        r.s.mesh.geometry = soldierGeometry(w, teamLook(r.team));
         r.cone.position.z = CONE_Z[w]; r.fl.position.z = CONE_Z[w] - 0.02;
       }
       p.weapon = w;

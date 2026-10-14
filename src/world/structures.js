@@ -85,6 +85,19 @@ export function warehouse(ctx) {
   ctx.group.add(beacon);
   const l = ctx.lamp({ x: bx, y: 6.05, z: W.z1 + 0.75, color: 0xff2410, intensity: 260, type: 'point', range: 20, flareSize: 2.2, flareK: 2, bulb: beacon, strength: 1.2 });
   l.pulse = (t) => 0.12 + 0.88 * Math.pow(Math.max(0, Math.sin(t * 3.6)), 3);
+  // Detalle exterior (sólo visual): pilastras entre ventanas, canalones, cumbrera con ventiladores y cuadro eléctrico.
+  const post = M.darkSteel;
+  for (const x of [-22, -18, -14, -10, 14.6]) ctx.add(boxUV(0.26, H - 1, 0.14, 1), post, xform(x, (H + 1) / 2, W.z1 + 0.22), 1);
+  for (const z of [-54, -49, -44, -39]) for (const x of [W.x0 - 0.22, W.x1 + 0.22]) ctx.add(boxUV(0.14, H - 1, 0.26, 1), post, xform(x, (H + 1) / 2, z), 1);
+  for (const z of [W.z0 - 0.48, W.z1 + 0.48]) ctx.add(boxUV(wx + 1.2, 0.14, 0.2, 1), M.darkSteel, xform(cx, H - 0.02, z), 1);
+  ctx.add(boxUV(wx + 1.2, 0.1, 0.5, 1), M.darkSteel, xform(cx, W.ridgeH + 0.16, cz), 1);
+  const vent = M.metal(0x8c9196, { worn: true });
+  for (const x of [-16, -4, 8]) {
+    ctx.add(cylUV(0.45, 0.5, 0.5, 12), vent, xform(x, W.ridgeH + 0.45, cz), 1);
+    ctx.add(cylUV(0.62, 0.62, 0.08, 12), vent, xform(x, W.ridgeH + 0.76, cz), 1);
+  }
+  ctx.add(boxUV(0.9, 1.5, 0.2, 1), M.metal(0x6a7076, { worn: true }), xform(-12, 1.85, W.z1 + 0.25), 1);
+  ctx.add(cylUV(0.03, 0.03, 3, 6), M.darkSteel, xform(-12.3, 4.1, W.z1 + 0.19), 0);
   ctx.concreteRects.push({ x0: W.x0, x1: W.x1, z0: W.z0, z1: W.z1 + 4.5 });
   ctx.region = 'all';
 }
@@ -125,6 +138,17 @@ export function office(ctx) {
   }
   ctx.add(cylUV(0.08, 0.08, O.h, 8), M.darkSteel, xform(O.x1 + 0.14, O.h / 2, O.z1 - 0.6), 1);
   ctx.add(boxUV(0.9, 1.3, 0.5, 1), M.metal(0x6a7076, { worn: true }), xform(O.x1 + 0.3, 2.6, O.z0 + 1.2));
+  // Detalle exterior (sólo visual): imposta entre plantas, casetón y antenas en la azotea, y escalera de gato.
+  ctx.add(boxUV(0.08, 0.14, wz + 0.1, 2), M.concrete, xform(O.x1 + 0.04, 3.55, cz), 0);
+  ctx.add(boxUV(wx + 0.1, 0.14, 0.08, 2), M.concrete, xform(cx, 3.55, O.z1 + 0.04), 0);
+  ctx.add(boxUV(2.2, 2.1, 2.6, 1.6), M.cinderDark, xform(cx - 2, O.h + 1.5, cz - 4));
+  ctx.add(boxUV(2.5, 0.12, 2.9, 2), M.concrete, xform(cx - 2, O.h + 2.6, cz - 4));
+  ctx.add(cylUV(0.04, 0.05, 4.5, 8), M.darkSteel, xform(cx + 5, O.h + 2.7, cz - 3), 1);
+  for (const [y, w] of [[1.6, 1.3], [2.3, 1.0], [3.0, 0.7]]) ctx.add(boxUV(w, 0.03, 0.03, 1), M.darkSteel, xform(cx + 5, O.h + 0.45 + y, cz - 3), 0);
+  ctx.add(new THREE.SphereGeometry(0.6, 12, 5, 0, Math.PI * 2, 0, 0.95), M.metal(0x8c9196, { worn: true }), xform(cx - 5.5, O.h + 1.25, cz + 4, 2.2, 0.6, 0), 1);
+  ctx.add(cylUV(0.04, 0.04, 0.8, 6), M.darkSteel, xform(cx - 5.5, O.h + 0.85, cz + 4), 0);
+  for (const s of [-1, 1]) ctx.add(boxUV(0.04, O.h, 0.04, 1), M.darkSteel, xform(cx - 6 + s * 0.25, O.h / 2, O.z1 + 0.1), 0);
+  for (let i = 0; i < 17; i++) ctx.add(boxUV(0.5, 0.03, 0.03, 1), M.darkSteel, xform(cx - 6, 0.5 + i * 0.4, O.z1 + 0.1), 0);
   ctx.concreteRects.push({ x0: O.x0 - 1.5, x1: O.x1 + 2.2, z0: O.z0 - 1.5, z1: O.z1 + 1.5 }, { x0: O.x1, x1: -ROAD.halfW, z0: dz - 1.2, z1: dz + 1.2 });
   ctx.region = 'all';
 }
@@ -183,6 +207,14 @@ export function guardTower(ctx, x, z) {
   for (const [w, d, ox, oz] of [[3.4, 0.08, 0, 1.66], [3.4, 0.08, 0, -1.66], [0.08, 3.4, 1.66, 0], [0.08, 3.4, -1.66, 0]]) ctx.add(boxUV(w, 1.05, d, 1.7), M.corrugatedRoof, xform(x + ox, P + 0.66, z + oz));
   for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) ctx.add(boxUV(0.08, 1.2, 0.08, 1), steel, xform(x + dx * 1.62, P + 1.75, z + dz * 1.62));
   ctx.add(boxUV(4.2, 0.1, 4.2, 4), M.corrugatedRoof, xform(x, P + 2.4, z, 0.06, 0, 0));
+  // Arriostramiento en cruz de las cuatro caras (sólo visual).
+  for (let k = 0; k < 3; k++) {
+    const y = 1.05 + k * 2.1; const a = (k % 2 ? -1 : 1) * 0.679;
+    for (const s of [-1, 1]) {
+      ctx.add(boxUV(0.05, 0.05, 3.34, 1), steel, xform(x + s * 1.3, y, z, a * s, 0, 0), 1);
+      ctx.add(boxUV(3.34, 0.05, 0.05, 1), steel, xform(x, y, z + s * 1.3, 0, 0, a * s), 1);
+    }
+  }
   // Escalera.
   for (let i = 0; i < 16; i++) ctx.add(boxUV(0.5, 0.03, 0.03, 1), steel, xform(x, 0.3 + i * 0.4, z + 1.42), 0);
   for (const s of [-1, 1]) ctx.add(boxUV(0.04, P, 0.04, 1), steel, xform(x + s * 0.25, P / 2, z + 1.42), 0);
@@ -223,6 +255,15 @@ export function fuelDepot(ctx, x, z) {
     ctx.collider(x + dx, z, 3, 9.2, 0, 3.65, 0, 'metal');
     ctx.coverAround(x + dx, z, 3, 9.2, 0, false);
     ctx.add(cylUV(0.3, 0.3, 0.3, 12), M.darkSteel, xform(x + dx, 3.75, z - 1.5), 1);
+    // Zunchos, pasarela con barandilla y válvula (sólo visual).
+    for (const k of [-2.2, 0, 2.2]) ctx.add(new THREE.TorusGeometry(1.52, 0.04, 6, 24), M.darkSteel, xform(x + dx, 2.15, z + k), 1);
+    ctx.add(boxUV(0.7, 0.06, 6, 1), M.darkSteel, xform(x + dx, 3.69, z), 1);
+    for (const s of [-1, 1]) {
+      for (const k of [-2.9, -1.45, 0, 1.45, 2.9]) ctx.add(boxUV(0.04, 0.9, 0.04, 1), M.steel, xform(x + dx + s * 0.33, 4.15, z + k), 0);
+      for (const y of [4.2, 4.6]) ctx.add(boxUV(0.04, 0.04, 5.84, 1), M.steel, xform(x + dx + s * 0.33, y, z), 0);
+    }
+    ctx.add(cylUV(0.1, 0.1, 1.5, 8), M.darkSteel, xform(x + dx, 0.95, z + 4.7), 1);
+    ctx.add(new THREE.TorusGeometry(0.2, 0.025, 6, 14), M.metal(0xb8201a), xform(x + dx, 1.5, z + 4.86), 0);
     ctx.add(boxUV(1.3, 0.9, 0.04, 1), M.glow(0xd8a020, 0.12), xform(x + dx, 2.2, z + 4.62), 0);
   }
   ctx.add(cylUV(0.09, 0.09, 4.6, 8), M.metal(0xb8960f, { worn: true }), xform(x + 2.3, 0.5, z + 3.6, 0, 0, Math.PI / 2), 1);

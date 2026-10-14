@@ -1,10 +1,12 @@
 // Modelos procedurales de las armas en primera persona: carabina con mira holográfica y linterna,
-// pistola compacta y cuchillo de combate, cada uno con sus brazos.
+// pistola compacta y cuchillo de combate, cada uno con sus manos. Las piezas con forma (cajón, cargador,
+// empuñaduras, culata, armazón) son siluetas laterales extruidas; los dedos, cadenas de cilindros.
 // Unidades reales en metros; el grupo raíz se escala y cuelga de la cámara. -Z = hacia delante.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { xform } from './geo.js';
+import { grainCanvas, heightToNormal, tex } from './textures.js';
 
 export const SIGHT_Y = 0.097; // altura del eje de la mira del fusil sobre el origen del arma
 export const PISTOL_SIGHT_Y = 0.049; // ídem para las miras de la pistola
@@ -22,20 +24,40 @@ function between(p0, p1, r0, r1, seg = 12) {
   return g;
 }
 
+// Silueta lateral extruida: puntos [z, y] en el espacio del arma y ancho `w` centrado en x = 0.
+// o.holes: huecos con el mismo formato. o.bevel: chaflán de los cantos.
+function profile(pts, w, o = {}) {
+  const trace = (path, list) => { list.forEach(([z, y], i) => (i ? path.lineTo(-z, y) : path.moveTo(-z, y))); path.closePath(); return path; };
+  const s = trace(new THREE.Shape(), pts);
+  for (const hole of o.holes || []) s.holes.push(trace(new THREE.Path(), hole));
+  const b = o.bevel ?? 0.0015;
+  const g = new THREE.ExtrudeGeometry(s, { depth: w - 2 * b, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 1, steps: 1 });
+  g.translate(0, 0, -(w - 2 * b) / 2);
+  g.rotateY(Math.PI / 2); // x del perfil -> -Z
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 5, uv.getY(i) * 5);
+  return g;
+}
+
 // Materiales compartidos por los tres modelos.
 let _mat = null;
 function materials(surf) {
   if (_mat) return _mat;
   const drops = surf.glassDrops;
-  const mk = (color, rough, metal, dropK = 0.5) => {
-    const m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, normalMap: drops });
-    m.normalScale.set(dropK, dropK);
+  const grain = tex(heightToNormal(grainCanvas(128, 4242), 0.5), {}); // grano fino: acabado mate, sin relieve a la vista
+  const mk = (color, rough, metal, k = 0.5, normal = drops) => {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, normalMap: normal });
+    m.normalScale.set(k, k);
     return m;
   };
   _mat = {
-    black: mk(0x2a2c30, 0.4, 0.7),
-    dark: mk(0x0d0e10, 0.55, 0.3, 0.2),
-    fde: mk(0x7d6c4e, 0.58, 0.05),
+    // Fusil y pistola: metal y polímero lisos y mates.
+    black: mk(0x2a2c30, 0.46, 0.7, 0.3, grain),
+    dark: mk(0x0d0e10, 0.58, 0.3, 0.3, grain),
+    fde: mk(0x7d6c4e, 0.62, 0.05, 0.3, grain),
+    // Cuchillo: conserva el acabado con gotas de siempre.
+    knifeBlack: mk(0x2a2c30, 0.4, 0.7),
+    knifeDark: mk(0x0d0e10, 0.55, 0.3, 0.2),
     steel: mk(0x9a9da0, 0.22, 1, 0.3),
     glove: mk(0x1d2024, 0.8, 0, 0.25),
     pad: mk(0x23262a, 0.55, 0.1, 0.3),
@@ -52,6 +74,17 @@ function kit(surf) {
   const rbox = (m, w, h, d, x, y, z, rx = 0, ry = 0, rz = 0, r = 0.004) => put(m, new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2.2, h / 2.2, d / 2.2)), xform(x, y, z, rx, ry, rz));
   const box = (m, w, h, d, x, y, z, rx = 0, ry = 0, rz = 0) => put(m, new THREE.BoxGeometry(w, h, d), xform(x, y, z, rx, ry, rz));
   const cylZ = (m, r0, r1, len, x, y, z, seg = 16) => put(m, new THREE.CylinderGeometry(r1, r0, len, seg), xform(x, y, z, Math.PI / 2, 0, 0));
+  const cylX = (m, r, len, x, y, z, seg = 10) => put(m, new THREE.CylinderGeometry(r, r, len, seg), xform(x, y, z, 0, 0, Math.PI / 2));
+  const prof = (m, pts, w, x = 0, o) => put(m, profile(pts, w, o), x ? xform(x, 0, 0) : null);
+  // Dedo: cadena de tramos entre los puntos dados, con una esfera en cada nudillo y en la yema.
+  const finger = (m, pts, r0, r1 = r0) => {
+    const n = pts.length - 1;
+    for (let i = 0; i < n; i++) {
+      const ra = r0 + ((r1 - r0) * i) / n; const rb = r0 + ((r1 - r0) * (i + 1)) / n;
+      put(m, between(pts[i], pts[i + 1], ra, rb, 8));
+      put(m, new THREE.SphereGeometry(rb, 8, 6), xform(...pts[i + 1]));
+    }
+  };
   const flush = (parent) => {
     for (const [m, list] of lists) {
       const mesh = new THREE.Mesh(mergeGeometries(list, false), m);
@@ -60,56 +93,84 @@ function kit(surf) {
     }
     lists.clear();
   };
-  return { mat, put, rbox, box, cylZ, flush };
+  return { mat, put, rbox, box, cylZ, cylX, prof, finger, flush };
 }
 
 const finish = (root) => root.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
+
+// Punto del que cuelga el llavero (ver src/charms.js).
+function anchor(root, x, y, z) {
+  const o = new THREE.Object3D();
+  o.position.set(x, y, z);
+  root.add(o);
+  return o;
+}
 
 // ---------- Fusil ----------
 export function buildViewModel(surf) {
   const root = new THREE.Group();
   root.name = 'viewmodel';
-  const { mat, put, rbox, box, cylZ, flush } = kit(surf);
+  const { mat, put, rbox, box, cylZ, cylX, prof, finger, flush } = kit(surf);
 
-  // --- Cajón de mecanismos ---
-  rbox(mat.black, 0.044, 0.048, 0.205, 0, 0.034, -0.015);
-  rbox(mat.black, 0.04, 0.05, 0.15, 0, -0.012, 0);
-  rbox(mat.black, 0.036, 0.062, 0.07, 0, -0.055, -0.07);
+  // --- Cajón de mecanismos: superior liso e inferior con el brocal del cargador ---
+  prof(mat.black, [[0.088, 0.012], [0.088, 0.05], [0.078, 0.058], [-0.118, 0.058], [-0.118, 0.012]], 0.044);
+  prof(mat.black, [[0.085, 0.014], [-0.118, 0.014], [-0.118, -0.03], [-0.112, -0.09], [-0.04, -0.084], [-0.036, -0.04], [0.03, -0.038], [0.05, -0.03], [0.085, -0.016]], 0.04);
   box(mat.dark, 0.003, 0.02, 0.062, 0.0222, 0.037, -0.03); // ventana de expulsión
-  cylZ(mat.black, 0.007, 0.007, 0.03, 0.026, 0.03, 0.062, 10);
-  rbox(mat.black, 0.052, 0.009, 0.022, 0, 0.058, 0.088, 0, 0, 0, 0.002);
-  box(mat.black, 0.008, 0.004, 0.062, 0, -0.064, 0.002);
-  box(mat.steel, 0.006, 0.022, 0.006, 0, -0.05, 0.014, 0.25);
-  rbox(mat.fde, 0.03, 0.1, 0.044, 0, -0.085, 0.052, 0.32, 0, 0, 0.008);
-  // Culata.
+  box(mat.black, 0.003, 0.012, 0.062, 0.0232, 0.021, -0.03); // tapa de la ventana, abierta
+  rbox(mat.black, 0.008, 0.014, 0.014, 0.024, 0.04, 0.012, 0, 0, 0, 0.003); // deflector de vainas
+  cylZ(mat.black, 0.007, 0.007, 0.03, 0.026, 0.03, 0.062, 10); // empujador del cerrojo
+  rbox(mat.black, 0.052, 0.009, 0.022, 0, 0.058, 0.088, 0, 0, 0, 0.002); // palanca de montar
+  box(mat.black, 0.008, 0.004, 0.062, 0, -0.064, 0.002); // guardamonte
+  box(mat.steel, 0.006, 0.022, 0.006, 0, -0.05, 0.014, 0.25); // gatillo
+  // Lado izquierdo: retenida del cerrojo, selector y pasadores.
+  rbox(mat.black, 0.004, 0.02, 0.012, -0.0215, 0.0, -0.045, 0, 0, 0, 0.0015);
+  cylX(mat.black, 0.005, 0.004, -0.021, -0.014, 0.05);
+  box(mat.black, 0.003, 0.005, 0.02, -0.0225, -0.014, 0.04, 0.25);
+  cylX(mat.steel, 0.003, 0.003, -0.0205, -0.004, 0.072, 8);
+  cylX(mat.steel, 0.003, 0.003, -0.0205, -0.008, -0.098, 8);
+  // Empuñadura, inclinada hacia atrás.
+  prof(mat.fde, [[0.03, -0.036], [0.072, -0.03], [0.086, -0.042], [0.11, -0.128], [0.1, -0.14], [0.07, -0.134], [0.042, -0.07]], 0.03, 0, { bevel: 0.004 });
+  // Culata: tubo, cuerpo con aligeramiento y cantonera.
   cylZ(mat.black, 0.014, 0.014, 0.19, 0, 0.03, 0.18, 14);
-  rbox(mat.fde, 0.042, 0.066, 0.16, 0, 0.02, 0.245, 0, 0, 0, 0.01);
-  rbox(mat.fde, 0.03, 0.03, 0.11, 0, -0.036, 0.275, -0.38, 0, 0, 0.008);
-  rbox(mat.dark, 0.045, 0.132, 0.024, 0, -0.006, 0.332, 0, 0, 0, 0.008);
-  // Guardamanos con ranuras, raíl y empuñadura.
-  rbox(mat.fde, 0.046, 0.05, 0.27, 0, 0.032, -0.255, 0, 0, 0, 0.012);
+  prof(mat.fde, [[0.165, 0.052], [0.325, 0.052], [0.335, 0.04], [0.335, -0.075], [0.322, -0.082], [0.298, -0.07], [0.235, -0.008], [0.165, 0.002]], 0.04, 0,
+    { bevel: 0.004, holes: [[[0.262, -0.004], [0.312, -0.004], [0.312, -0.052]]] });
+  rbox(mat.dark, 0.044, 0.135, 0.014, 0, -0.014, 0.341, 0, 0, 0, 0.005);
+  // Guardamanos octogonal con ranuras, raíl y empuñadura delantera.
+  const hg = new THREE.CylinderGeometry(0.0268, 0.0268, 0.27, 8, 1);
+  hg.rotateY(Math.PI / 8);
+  put(mat.fde, hg, xform(0, 0.032, -0.255, Math.PI / 2, 0, 0, 0.92, 1, 1));
+  cylZ(mat.black, 0.0225, 0.0225, 0.012, 0, 0.032, -0.121, 12);
   for (let i = 0; i < 5; i++) {
-    for (const sx of [-1, 1]) box(mat.dark, 0.002, 0.012, 0.032, sx * 0.0232, 0.032, -0.15 - i * 0.048);
-    box(mat.dark, 0.016, 0.002, 0.03, 0, 0.0065, -0.15 - i * 0.048);
+    const z = -0.15 - i * 0.048;
+    for (const sx of [-1, 1]) {
+      box(mat.dark, 0.002, 0.012, 0.032, sx * 0.0232, 0.032, z);
+      for (const sy of [-1, 1]) box(mat.dark, 0.002, 0.009, 0.03, sx * 0.0163, 0.032 + sy * 0.0177, z, 0, 0, sx * sy * -Math.PI / 4);
+    }
+    box(mat.dark, 0.016, 0.002, 0.03, 0, 0.0065, z);
   }
   box(mat.black, 0.022, 0.006, 0.475, 0, 0.0605, -0.152);
   for (let i = 0; i < 44; i++) box(mat.black, 0.0225, 0.0045, 0.0055, 0, 0.0655, 0.082 - i * 0.0108);
-  rbox(mat.fde, 0.028, 0.072, 0.036, 0, -0.03, -0.245, -0.22, 0, 0, 0.008);
-  // Cañón y freno de boca.
+  rbox(mat.fde, 0.028, 0.072, 0.036, 0, -0.03, -0.245, -0.22, 0, 0, 0.01);
+  // Cañón, toma de gases y bocacha.
   cylZ(mat.black, 0.0085, 0.0085, 0.15, 0, 0.032, -0.455);
   cylZ(mat.black, 0.0118, 0.0118, 0.03, 0, 0.032, -0.4, 12);
   cylZ(mat.black, 0.0128, 0.0118, 0.062, 0, 0.032, -0.55);
   for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) box(mat.dark, 0.004, 0.007, 0.01, sx * 0.0115, 0.032, -0.532 - i * 0.016);
   cylZ(mat.dark, 0.0058, 0.0058, 0.004, 0, 0.032, -0.5815, 12);
-  // Módulo láser y linterna.
+  // Módulo láser y linterna con su montaje.
   rbox(mat.black, 0.04, 0.022, 0.07, 0, 0.0775, -0.33, 0, 0, 0, 0.004);
+  rbox(mat.black, 0.012, 0.02, 0.03, 0.027, 0.034, -0.345, 0, 0, 0, 0.003);
   cylZ(mat.black, 0.0135, 0.0125, 0.075, 0.037, 0.034, -0.345, 14);
   cylZ(mat.black, 0.0165, 0.0135, 0.02, 0.037, 0.034, -0.39, 14);
-  // Mira holográfica: base, capó y montantes.
-  rbox(mat.black, 0.04, 0.013, 0.075, 0, 0.0725, -0.02, 0, 0, 0, 0.003);
-  for (const sx of [-1, 1]) rbox(mat.black, 0.004, 0.046, 0.05, sx * 0.023, 0.1, -0.03, 0, 0, 0, 0.0015);
-  rbox(mat.black, 0.05, 0.005, 0.052, 0, 0.1245, -0.03, 0, 0, 0, 0.002);
+  // Mira holográfica: base, capó de chapa fina y botonera. Alza abatida detrás.
+  rbox(mat.black, 0.04, 0.014, 0.08, 0, 0.0725, -0.02, 0, 0, 0, 0.003);
+  for (const sx of [-1, 1]) prof(mat.black, [[0, 0.079], [-0.054, 0.079], [-0.05, 0.116], [-0.042, 0.1245], [-0.014, 0.1245], [-0.004, 0.112]], 0.003, sx * 0.0235, { bevel: 0.0006 });
+  rbox(mat.black, 0.05, 0.004, 0.03, 0, 0.1255, -0.028, 0, 0, 0, 0.0015);
   rbox(mat.black, 0.036, 0.012, 0.03, 0, 0.084, 0.012, 0, 0, 0, 0.003);
+  rbox(mat.black, 0.024, 0.007, 0.04, 0, 0.0705, 0.066, 0, 0, 0, 0.002);
+  // Anilla portafusil en el lado izquierdo: de ella cuelga el llavero.
+  rbox(mat.black, 0.006, 0.012, 0.016, -0.0235, 0.014, -0.135, 0, 0, 0, 0.002);
+  put(mat.steel, new THREE.TorusGeometry(0.006, 0.0013, 6, 12), xform(-0.028, 0.005, -0.135));
   flush(root);
 
   // Cerrojo visible por la ventana (se anima al disparar).
@@ -117,12 +178,13 @@ export function buildViewModel(surf) {
   bolt.position.set(0.0222, 0.037, -0.03);
   root.add(bolt);
 
-  // Cargador (se anima al recargar).
+  // Cargador curvo (se anima al recargar).
   const mag = new THREE.Group();
   mag.position.set(0, -0.085, -0.074);
-  const magMesh = new THREE.Mesh(new RoundedBoxGeometry(0.025, 0.17, 0.06, 2, 0.004), mat.dark);
-  magMesh.position.set(0, -0.07, 0.006);
-  magMesh.rotation.x = 0.16;
+  const magMesh = new THREE.Mesh(
+    profile([[0.03, 0.03], [-0.03, 0.03], [-0.034, -0.05], [-0.046, -0.115], [-0.064, -0.168], [-0.006, -0.186], [0.008, -0.13], [0.022, -0.06]], 0.024, { bevel: 0.002 }),
+    mat.dark,
+  );
   magMesh.receiveShadow = true;
   mag.add(magMesh);
   root.add(mag);
@@ -163,56 +225,72 @@ export function buildViewModel(surf) {
   lens.renderOrder = 30;
   root.add(lens);
 
-  // --- Brazo derecho (fijo al arma) ---
+  // --- Mano derecha (fija al arma): dorso por la derecha, dedos rodeando la empuñadura y pulgar por la izquierda ---
   const rightArm = new THREE.Group();
-  rbox(mat.glove, 0.052, 0.088, 0.07, 0.004, -0.086, 0.06, 0.32, 0, 0, 0.016);
-  rbox(mat.glove, 0.013, 0.014, 0.055, 0.0235, -0.038, 0.016, 0.1, 0, 0, 0.005);
-  rbox(mat.glove, 0.016, 0.016, 0.055, -0.026, -0.05, 0.04, 0.2, 0.2, 0, 0.006);
-  rbox(mat.pad, 0.044, 0.012, 0.05, 0.02, -0.063, 0.085, 0.32, 0, -0.9, 0.004);
-  put(mat.sleeve, between([0.012, -0.125, 0.09], [0.15, -0.32, 0.43], 0.034, 0.055));
-  put(mat.glove, between([0.008, -0.11, 0.078], [0.026, -0.14, 0.12], 0.036, 0.037));
+  rbox(mat.glove, 0.03, 0.088, 0.05, 0.02, -0.088, 0.094, -0.3, 0, 0, 0.014);
+  rbox(mat.glove, 0.03, 0.07, 0.022, 0, -0.085, 0.112, -0.3, 0, 0, 0.01);
+  rbox(mat.pad, 0.012, 0.05, 0.04, 0.036, -0.08, 0.09, -0.3, 0, 0, 0.004);
+  for (let i = 0; i < 3; i++) {
+    const y = -0.066 - i * 0.022; const zf = 0.042 + ((y + 0.07) / -0.064) * 0.028;
+    finger(mat.glove, [[0.02, y, zf + 0.004], [0.006, y, zf - 0.009], [-0.014, y - 0.002, zf - 0.004], [-0.02, y - 0.003, zf + 0.012]], 0.0088, 0.0078);
+  }
+  finger(mat.glove, [[0.022, -0.05, 0.05], [0.025, -0.038, 0.015], [0.024, -0.034, -0.012]], 0.0088, 0.0078); // índice, fuera del gatillo
+  finger(mat.glove, [[0.004, -0.046, 0.098], [-0.02, -0.034, 0.075], [-0.024, -0.03, 0.046]], 0.0105, 0.009); // pulgar
+  put(mat.sleeve, between([0.016, -0.128, 0.118], [0.15, -0.32, 0.43], 0.034, 0.055));
+  put(mat.glove, between([0.012, -0.112, 0.105], [0.03, -0.142, 0.14], 0.036, 0.037));
   flush(rightArm);
   root.add(rightArm);
 
-  // --- Brazo izquierdo (acompaña al cargador durante la recarga) ---
+  // --- Mano izquierda (acompaña al cargador durante la recarga): dorso a la vista, dedos por delante y reloj ---
   const leftArm = new THREE.Group();
-  rbox(mat.glove, 0.058, 0.078, 0.056, 0, -0.036, -0.243, -0.22, 0, 0, 0.016);
-  rbox(mat.glove, 0.015, 0.05, 0.06, -0.031, 0.004, -0.235, 0, 0, 0.1, 0.006);
-  rbox(mat.glove, 0.016, 0.032, 0.034, 0.03, -0.004, -0.22, 0, 0, -0.1, 0.006);
-  rbox(mat.pad, 0.012, 0.046, 0.052, -0.034, -0.04, -0.243, -0.22, 0, 0, 0.004);
-  put(mat.sleeve, between([-0.012, -0.075, -0.225], [-0.27, -0.33, 0.2], 0.034, 0.056));
-  put(mat.glove, between([-0.004, -0.06, -0.238], [-0.03, -0.095, -0.195], 0.036, 0.037));
+  rbox(mat.glove, 0.028, 0.078, 0.058, -0.026, -0.04, -0.24, -0.22, 0, 0, 0.012);
+  rbox(mat.pad, 0.01, 0.046, 0.046, -0.041, -0.036, -0.241, -0.22, 0, 0, 0.004);
+  for (let i = 0; i < 4; i++) {
+    const y = -0.008 - i * 0.019; const zf = -0.263 - 0.22 * (y + 0.03);
+    finger(mat.glove, [[-0.022, y, zf + 0.006], [-0.008, y, zf - 0.009], [0.012, y - 0.001, zf - 0.006], [0.02, y - 0.002, zf + 0.01]], 0.0088, 0.0078);
+  }
+  finger(mat.glove, [[-0.02, -0.03, -0.215], [-0.026, -0.004, -0.232], [-0.027, 0.01, -0.262]], 0.0105, 0.009); // pulgar
+  put(mat.sleeve, between([-0.04, -0.082, -0.205], [-0.27, -0.33, 0.2], 0.034, 0.056));
+  put(mat.glove, between([-0.03, -0.07, -0.222], [-0.056, -0.098, -0.18], 0.036, 0.037));
+  rbox(mat.dark, 0.032, 0.009, 0.034, -0.07, -0.066, -0.184, 0, 0, 0.63, 0.003);
+  rbox(mat.black, 0.022, 0.004, 0.022, -0.0735, -0.061, -0.184, 0, 0, 0.63, 0.0015);
   flush(leftArm);
   root.add(leftArm);
 
   const muzzle = new THREE.Object3D(); muzzle.position.copy(MUZZLE); root.add(muzzle);
   const eject = new THREE.Object3D(); eject.position.copy(EJECT); root.add(eject);
+  const charm = anchor(root, -0.028, -0.002, -0.135);
 
   finish(root);
-  return { root, bolt, mag, leftArm, rightArm, muzzle, eject, lens, lensUniforms, lampLens };
+  return { root, bolt, mag, leftArm, rightArm, muzzle, eject, lens, lensUniforms, lampLens, charm };
 }
 
 // ---------- Pistola ----------
 // Compacta de pequeño calibre, a dos manos. La corredera y el cargador se animan aparte.
+const GRIP_LEAN = -0.22; // la empuñadura se inclina hacia atrás
+
 export function buildPistolModel(surf) {
   const root = new THREE.Group();
   root.name = 'viewmodel-pistol';
-  const { mat, put, rbox, box, cylZ, flush } = kit(surf);
+  const { mat, put, rbox, box, cylZ, prof, finger, flush } = kit(surf);
 
-  // Armazón, guardamonte y empuñadura.
-  rbox(mat.dark, 0.026, 0.018, 0.15, 0, 0.011, -0.05, 0, 0, 0, 0.004);
-  rbox(mat.dark, 0.022, 0.012, 0.06, 0, -0.002, -0.092, 0, 0, 0, 0.003);
-  box(mat.dark, 0.008, 0.004, 0.05, 0, -0.032, -0.036);
-  box(mat.dark, 0.008, 0.03, 0.004, 0, -0.018, -0.061);
-  box(mat.steel, 0.005, 0.018, 0.005, 0, -0.012, -0.03, 0.25);
-  rbox(mat.fde, 0.028, 0.098, 0.044, 0, -0.047, 0.014, 0.2, 0, 0, 0.008);
-  for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) box(mat.dark, 0.002, 0.006, 0.03, sx * 0.0142, -0.03 - i * 0.016, 0.01 + i * 0.0032, 0.2);
+  // Armazón de una pieza: guardapolvo, guardamonte hueco y empuñadura, con cachas.
+  prof(mat.dark, [[0.05, 0.02], [-0.125, 0.02], [-0.125, 0.002], [-0.07, 0], [-0.066, -0.03], [-0.058, -0.037], [-0.012, -0.037], [-0.004, -0.03],
+    [0.018, -0.108], [0.062, -0.108], [0.046, -0.02], [0.058, 0.004]], 0.026, 0,
+  { bevel: 0.003, holes: [[[-0.06, -0.004], [-0.06, -0.028], [-0.054, -0.031], [-0.014, -0.031], [-0.01, -0.004]]] });
+  prof(mat.fde, [[0, -0.03], [0.02, -0.1], [0.056, -0.1], [0.042, -0.026]], 0.03, 0, { bevel: 0.004 });
+  for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) box(mat.dark, 0.002, 0.003, 0.03, sx * 0.0152, -0.04 - i * 0.016, 0.022 + i * 0.0045, GRIP_LEAN);
+  box(mat.steel, 0.005, 0.018, 0.005, 0, -0.014, -0.03, 0.25); // gatillo
+  rbox(mat.dark, 0.008, 0.014, 0.01, 0, 0.03, 0.052, 0.4, 0, 0, 0.003); // martillo
   cylZ(mat.steel, 0.0052, 0.0052, 0.012, 0, 0.031, -0.136, 12); // boca del cañón
+  // Anilla en el costado izquierdo del guardapolvo: de ella cuelga el llavero.
+  rbox(mat.dark, 0.006, 0.008, 0.012, -0.0145, 0.008, -0.116, 0, 0, 0, 0.002);
+  put(mat.steel, new THREE.TorusGeometry(0.005, 0.0012, 6, 12), xform(-0.0185, 0.004, -0.116));
   flush(root);
 
   // Corredera con miras (retrocede en cada disparo).
   const slide = new THREE.Group();
-  rbox(mat.black, 0.027, 0.024, 0.186, 0, 0.03, -0.046, 0, 0, 0, 0.004);
+  prof(mat.black, [[0.047, 0.018], [0.047, 0.04], [0.043, 0.042], [-0.128, 0.042], [-0.139, 0.036], [-0.139, 0.018]], 0.027, 0, { bevel: 0.002 });
   for (let i = 0; i < 5; i++) for (const sx of [-1, 1]) box(mat.dark, 0.0015, 0.016, 0.004, sx * 0.0137, 0.03, 0.036 - i * 0.008);
   box(mat.dark, 0.002, 0.012, 0.03, 0.0137, 0.034, -0.03); // ventana de expulsión
   for (const sx of [-1, 1]) box(mat.dark, 0.005, 0.007, 0.007, sx * 0.007, 0.0455, 0.04); // alza
@@ -226,43 +304,51 @@ export function buildPistolModel(surf) {
   }
   root.add(slide);
 
-  // Cargador: baja a lo largo de la empuñadura al recargar.
+  // Cargador: baja por la empuñadura al recargar.
   const mag = new THREE.Group();
-  mag.rotation.x = 0.2;
+  mag.rotation.x = GRIP_LEAN;
   const magMesh = new THREE.Mesh(new RoundedBoxGeometry(0.021, 0.1, 0.031, 2, 0.003), mat.black);
-  magMesh.position.set(0, -0.052, 0.004);
+  magMesh.position.set(0, -0.058, 0.017);
   const magBase = new THREE.Mesh(new RoundedBoxGeometry(0.029, 0.009, 0.046, 2, 0.003), mat.black);
-  magBase.position.set(0, -0.103, 0.004);
+  magBase.position.set(0, -0.112, 0.018);
   mag.add(magMesh, magBase);
   root.add(mag);
 
-  // Mano derecha en la empuñadura.
+  // Mano derecha en la empuñadura: dedos por delante, índice a lo largo del armazón y pulgar alto.
   const rightArm = new THREE.Group();
-  rbox(mat.glove, 0.05, 0.082, 0.062, 0.004, -0.052, 0.024, 0.2, 0, 0, 0.016);
-  rbox(mat.glove, 0.046, 0.05, 0.022, 0, -0.05, -0.012, 0.2, 0, 0, 0.008);
-  rbox(mat.glove, 0.012, 0.012, 0.052, 0.0195, -0.004, -0.03, 0, 0, 0, 0.005); // índice a lo largo del armazón
-  rbox(mat.glove, 0.014, 0.016, 0.05, -0.02, 0.006, 0.0, 0.1, 0.15, 0, 0.006); // pulgar
-  rbox(mat.pad, 0.04, 0.012, 0.046, 0.02, -0.03, 0.05, 0.2, 0, -0.9, 0.004);
-  put(mat.sleeve, between([0.012, -0.095, 0.055], [0.16, -0.31, 0.42], 0.034, 0.055));
-  put(mat.glove, between([0.008, -0.08, 0.045], [0.026, -0.112, 0.085], 0.036, 0.037));
+  rbox(mat.glove, 0.03, 0.08, 0.05, 0.022, -0.062, 0.045, GRIP_LEAN, 0, 0, 0.014);
+  rbox(mat.glove, 0.03, 0.07, 0.02, 0.004, -0.06, 0.066, GRIP_LEAN, 0, 0, 0.009);
+  rbox(mat.pad, 0.012, 0.046, 0.04, 0.038, -0.056, 0.042, GRIP_LEAN, 0, 0, 0.004);
+  for (let i = 0; i < 3; i++) {
+    const y = -0.046 - i * 0.02; const zf = -0.004 + ((y + 0.03) / -0.078) * 0.022;
+    finger(mat.glove, [[0.02, y, zf + 0.006], [0.006, y, zf - 0.009], [-0.013, y, zf - 0.004], [-0.019, y, zf + 0.012]], 0.0086, 0.0076);
+  }
+  finger(mat.glove, [[0.019, -0.02, 0.012], [0.019, -0.006, -0.03]], 0.0082, 0.0074);
+  finger(mat.glove, [[0, -0.012, 0.058], [-0.018, 0.002, 0.03], [-0.02, 0.006, 0]], 0.01, 0.0088);
+  put(mat.sleeve, between([0.016, -0.1, 0.085], [0.16, -0.31, 0.42], 0.034, 0.055));
+  put(mat.glove, between([0.012, -0.085, 0.07], [0.03, -0.118, 0.11], 0.036, 0.037));
   flush(rightArm);
   root.add(rightArm);
 
-  // Mano izquierda de apoyo (acompaña al cargador durante la recarga).
+  // Mano izquierda de apoyo (acompaña al cargador durante la recarga): abraza a la derecha por delante.
   const leftArm = new THREE.Group();
-  rbox(mat.glove, 0.05, 0.072, 0.058, -0.02, -0.066, 0.014, 0.2, 0, 0.18, 0.016);
-  rbox(mat.glove, 0.016, 0.05, 0.05, -0.036, -0.03, 0.004, 0.2, 0, 0.1, 0.006);
-  rbox(mat.glove, 0.014, 0.015, 0.05, -0.021, 0.004, -0.045, 0, 0.12, 0, 0.006); // pulgar adelantado
-  put(mat.sleeve, between([-0.03, -0.105, 0.03], [-0.27, -0.33, 0.36], 0.034, 0.056));
-  put(mat.glove, between([-0.024, -0.09, 0.022], [-0.05, -0.122, 0.062], 0.036, 0.037));
+  rbox(mat.glove, 0.03, 0.07, 0.056, -0.03, -0.07, 0.03, GRIP_LEAN, 0, 0.18, 0.014);
+  for (let i = 0; i < 4; i++) {
+    const y = -0.05 - i * 0.018; const zf = -0.02 + ((y + 0.03) / -0.078) * 0.022;
+    finger(mat.glove, [[-0.026, y, zf + 0.01], [-0.01, y, zf - 0.006], [0.012, y, zf - 0.004], [0.026, y, zf + 0.012]], 0.0086, 0.0076);
+  }
+  finger(mat.glove, [[-0.022, -0.02, 0.03], [-0.023, -0.002, 0], [-0.022, 0.004, -0.04]], 0.01, 0.0088); // pulgar adelantado
+  put(mat.sleeve, between([-0.04, -0.105, 0.06], [-0.27, -0.33, 0.36], 0.034, 0.056));
+  put(mat.glove, between([-0.034, -0.092, 0.045], [-0.06, -0.124, 0.085], 0.036, 0.037));
   flush(leftArm);
   root.add(leftArm);
 
   const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.031, -0.145); root.add(muzzle);
   const eject = new THREE.Object3D(); eject.position.set(0.016, 0.04, -0.025); root.add(eject);
+  const charm = anchor(root, -0.0185, -0.001, -0.116);
 
   finish(root);
-  return { root, slide, mag, leftArm, rightArm, muzzle, eject };
+  return { root, slide, mag, leftArm, rightArm, muzzle, eject, charm };
 }
 
 // ---------- Cuchillo ----------
@@ -270,7 +356,7 @@ export function buildPistolModel(surf) {
 export function buildKnifeModel(surf) {
   const root = new THREE.Group();
   root.name = 'viewmodel-knife';
-  const { mat, put, rbox, box, flush } = kit(surf);
+  const { mat, put, rbox, box, finger, flush } = kit(surf);
 
   // Hoja: perfil lateral extruido (x = largo, y = alto), girado para que apunte hacia delante.
   const s = new THREE.Shape();
@@ -286,24 +372,33 @@ export function buildKnifeModel(surf) {
   blade.rotateY(Math.PI / 2); // x del perfil -> -Z
   blade.translate(0, 0.002, -0.04);
   put(mat.steel, blade);
-  box(mat.dark, 0.0034, 0.003, 0.085, 0, 0.011, -0.095); // canal de la hoja
+  box(mat.knifeDark, 0.0034, 0.003, 0.085, 0, 0.011, -0.095); // canal de la hoja
   // Guarda, mango con estrías y pomo.
-  rbox(mat.black, 0.014, 0.056, 0.012, 0, 0.003, -0.036, 0, 0, 0, 0.004);
+  rbox(mat.knifeBlack, 0.014, 0.056, 0.012, 0, 0.003, -0.036, 0, 0, 0, 0.004);
   rbox(mat.pad, 0.023, 0.031, 0.108, 0, 0.002, 0.024, 0, 0, 0, 0.009);
-  for (let i = 0; i < 5; i++) box(mat.dark, 0.0245, 0.0325, 0.004, 0, 0.002, -0.012 + i * 0.018);
-  rbox(mat.black, 0.024, 0.034, 0.014, 0, 0.002, 0.084, 0, 0, 0, 0.005);
+  for (let i = 0; i < 5; i++) box(mat.knifeDark, 0.0245, 0.0325, 0.004, 0, 0.002, -0.012 + i * 0.018);
+  rbox(mat.knifeBlack, 0.024, 0.034, 0.014, 0, 0.002, 0.084, 0, 0, 0, 0.005);
+  // Anilla en la punta de la guarda: de ella cuelga el llavero.
+  put(mat.steel, new THREE.TorusGeometry(0.005, 0.0012, 6, 12), xform(0, -0.029, -0.036));
   flush(root);
 
-  // Mano derecha cerrada sobre el mango.
+  // Mano derecha cerrada sobre el mango: dorso por la derecha, dedos por encima y pulgar sobre el lomo.
   const rightArm = new THREE.Group();
-  rbox(mat.glove, 0.05, 0.062, 0.084, 0.002, -0.004, 0.026, 0, 0, 0, 0.018);
-  rbox(mat.glove, 0.016, 0.02, 0.06, -0.022, 0.024, 0.006, 0, 0.2, 0, 0.007); // pulgar sobre el lomo
-  rbox(mat.pad, 0.044, 0.012, 0.05, 0.024, 0.006, 0.03, 0, 0, -1.2, 0.004);
+  rbox(mat.glove, 0.024, 0.06, 0.084, 0.022, -0.002, 0.03, 0, 0, 0, 0.012);
+  rbox(mat.glove, 0.04, 0.02, 0.08, 0.004, -0.024, 0.03, 0, 0, 0, 0.009);
+  rbox(mat.pad, 0.012, 0.044, 0.05, 0.036, 0.004, 0.03, 0, 0, 0, 0.004);
+  for (let i = 0; i < 4; i++) {
+    const z = i * 0.021;
+    finger(mat.glove, [[0.018, 0.018, z], [0.002, 0.026, z], [-0.016, 0.014, z], [-0.017, -0.01, z], [-0.004, -0.021, z]], 0.0088, 0.008);
+  }
+  finger(mat.glove, [[0.016, 0.014, 0.004], [0.004, 0.026, -0.012], [-0.003, 0.027, -0.03]], 0.0105, 0.009);
   put(mat.sleeve, between([0.014, -0.03, 0.075], [0.15, -0.26, 0.44], 0.034, 0.055));
   put(mat.glove, between([0.008, -0.018, 0.06], [0.026, -0.05, 0.1], 0.036, 0.037));
   flush(rightArm);
   root.add(rightArm);
 
+  const charm = anchor(root, 0, -0.034, -0.036);
+
   finish(root);
-  return { root, rightArm };
+  return { root, rightArm, charm };
 }

@@ -32,6 +32,19 @@ function shed(ctx) {
     ctx.group.add(bulb);
     ctx.lamp({ x, y: 3.9, z: -33.6, color: 0xdfeaff, type: 'spot', range: 14, target: [x, 0, -31.5], cone: { radius: 3.6, length: 3.9, intensity: 0.22, edge: 1.5, fall: 1.2 }, flareSize: 1.6, bulb });
   }
+  // Detalle (sólo visual): pilastras entre portones, topes de muelle, números de puerta, imposta y ventiladores.
+  const post = M.darkSteel;
+  for (const x of [-30, -18, -6, 6, 18, 30]) ctx.add(boxUV(0.3, 5, 0.16, 1), post, xform(x, 3.5, -34.32), 1);
+  for (const x of [-24, -12, 0, 12, 24]) {
+    for (const s of [-1, 1]) ctx.add(boxUV(0.25, 0.6, 0.14, 1), M.rubber, xform(x + s * 2.45, 0.7, -34.2), 0);
+    ctx.add(boxUV(0.9, 0.6, 0.04, 1), M.metal(0xb8960f, { worn: true }), xform(x, 5.15, -34.37), 0);
+  }
+  ctx.add(boxUV(61.2, 0.35, 0.1, 2), M.darkSteel, xform(0, 6.1, -33.86), 1);
+  const vent = M.metal(0x8c9196, { worn: true });
+  for (const x of [-22, -11, 0, 11, 22]) {
+    ctx.add(boxUV(1.2, 0.6, 1.2, 1), vent, xform(x, 6.6, -37.2), 1);
+    ctx.add(boxUV(1.5, 0.08, 1.5, 1), M.darkSteel, xform(x, 6.94, -37.2), 1);
+  }
   ctx.concreteRects.push({ x0: -31, x1: 31, z0: -34.6, z1: -30.5 });
 }
 
@@ -53,6 +66,27 @@ function gantry(ctx, x, z) {
   ctx.add(new THREE.PlaneGeometry(2.3, 1.1), M.glassDark, xform(x, H - 1.9, z + 8.62), 0);
   for (const dxx of [-0.8, 0.8]) ctx.add(cylUV(0.03, 0.03, 9, 6), M.darkSteel, xform(x + dxx, H - 5, z + 19), 0); // cables del gancho
   ctx.add(boxUV(2.6, 0.3, 6.2, 1), yel, xform(x, H - 9.6, z + 19)); // bastidor de enganche
+  // Detalle (sólo visual, nada a ras de suelo): cruces de arriostramiento, travesaños, mástil con tirantes,
+  // carro, caseta de máquinas, barandillas y escalera de gato.
+  const grey = M.metal(0x6a7076, { worn: true });
+  for (const dx of [-sx, sx]) {
+    for (const a of [-0.614, 0.614]) ctx.add(boxUV(0.35, 0.35, 13.7, 2), yel, xform(x + dx, 12.45, z, a, 0, 0));
+    for (const dz of [-sz, sz]) for (const y of [8, H - 0.4]) ctx.add(boxUV(1.3, 0.5, 1.3, 2), yel, xform(x + dx, y, z + dz));
+    ctx.add(boxUV(0.5, 7, 0.5, 2), yel, xform(x + dx, H + 4.75, z + sz)); // mástil
+    ctx.add(boxUV(0.18, 0.18, 21.08, 2), M.darkSteel, xform(x + dx, H + 4.72, z + 15.55, 0.336, 0, 0)); // tirante de la pluma
+    ctx.add(boxUV(0.18, 0.18, 15.27, 2), M.darkSteel, xform(x + dx, H + 4.72, z - 1.2, -0.472, 0, 0)); // tirante de cola
+    const out = Math.sign(dx) * 0.42;
+    for (let i = 0; i < 11; i++) ctx.add(boxUV(0.05, 1, 0.05, 1), M.darkSteel, xform(x + dx + out, H + 1.75, z - 7.5 + i * 3.3), 0);
+    for (const y of [H + 1.8, H + 2.25]) ctx.add(boxUV(0.05, 0.05, 33.6, 1), M.darkSteel, xform(x + dx + out, y, z + 9), 0);
+  }
+  for (const dz of [-sz, sz]) ctx.add(boxUV(sx * 2, 0.7, 0.7, 2), yel, xform(x, 8, z + dz));
+  ctx.add(boxUV(sx * 2 + 0.5, 0.4, 0.4, 2), yel, xform(x, H + 8.2, z + sz));
+  ctx.add(boxUV(7.4, 0.5, 3.2, 2), grey, xform(x, H + 0.2, z + 19)); // carro
+  ctx.add(boxUV(2.6, 1.8, 2.6, 2), grey, xform(x, H + 1.35, z + 19));
+  ctx.add(boxUV(6.5, 2.6, 5, 2), M.metal(0x8c9196, { worn: true }), xform(x, H + 2.55, z - 4.5)); // caseta de máquinas
+  ctx.add(boxUV(6.9, 0.14, 5.4, 2), M.darkSteel, xform(x, H + 3.92, z - 4.5));
+  for (const s of [-1, 1]) ctx.add(boxUV(0.05, H - 0.6, 0.05, 1), M.darkSteel, xform(x - sx - 0.52, (H + 0.6) / 2, z - sz + s * 0.22), 0);
+  for (let i = 0; i < 32; i++) ctx.add(boxUV(0.03, 0.03, 0.44, 1), M.darkSteel, xform(x - sx - 0.52, 0.9 + i * 0.5, z - sz), 0);
 }
 
 // Carguero atracado: sólo se ve desde el muelle, medio borrado por la niebla.
@@ -65,6 +99,22 @@ function ship(ctx) {
   ctx.add(boxUV(12.6, 0.4, 12.6, 4), M.darkSteel, xform(-33, 18.1, z));
   for (let i = 0; i < 5; i++) ctx.add(new THREE.PlaneGeometry(1.5, 0.9), M.glassDark, xform(-37.5 + i * 2.2, 15.6, z - 6.02, 0, Math.PI, 0), 0);
   ctx.add(cylUV(1.3, 1.6, 5, 16), M.metal(0x2a2d30, { worn: true }), xform(-33, 20.6, z + 1));
+  // Detalle (sólo visual): línea de flotación, cintón, portillos, barandilla, banda de la chimenea, mástiles y botes.
+  const white = M.metal(0xb9bdbf, { worn: true });
+  ctx.add(boxUV(92.2, 0.7, 0.08, 4), M.darkSteel, xform(2, 0.5, z - 7.52), 0);
+  ctx.add(boxUV(92.3, 0.25, 0.14, 4), M.darkSteel, xform(2, 7.0, z - 7.52), 0);
+  for (let i = 0; i < 18; i++) ctx.add(cylUV(0.28, 0.28, 0.06, 10), M.glassDark, xform(-40 + i * 5, 6.0, z - 7.52, Math.PI / 2, 0, 0), 0);
+  for (let i = 0; i < 24; i++) ctx.add(boxUV(0.06, 1.1, 0.06, 1), white, xform(-44 + i * 4, 8.9, z - 7.6), 0);
+  for (const y of [8.95, 9.42]) ctx.add(boxUV(92, 0.05, 0.05, 4), white, xform(2, y, z - 7.6), 0);
+  ctx.add(cylUV(1.42, 1.5, 0.9, 16), white, xform(-33, 21.6, z + 1), 0);
+  ctx.add(cylUV(0.12, 0.16, 6, 8), white, xform(-33, 21.3, z - 3), 0);
+  ctx.add(boxUV(2.4, 0.12, 0.25, 1), white, xform(-33, 23.6, z - 3), 0);
+  ctx.add(cylUV(0.15, 0.2, 9, 8), white, xform(40, 12.85, z), 0);
+  ctx.add(boxUV(0.1, 0.1, 5, 1), white, xform(40, 15.6, z), 0);
+  for (const dx of [-3, 3]) {
+    ctx.add(new THREE.CapsuleGeometry(0.85, 3, 4, 10), M.metal(0xd8601a, { worn: true }), xform(-33 + dx * 1.2, 10.4, z - 6.9, 0, 0, Math.PI / 2), 0);
+    for (const k of [-1.2, 1.2]) ctx.add(boxUV(0.12, 1.6, 0.12, 1), white, xform(-33 + dx * 1.2 + k, 11.6, z - 6.5), 0);
+  }
   // Carga sobre cubierta.
   const R = ctx.rng;
   for (let i = 0; i < 7; i++) {
