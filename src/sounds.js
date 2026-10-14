@@ -37,6 +37,20 @@ export function installSounds(proto) {
     this.noise(out, { type: 'bandpass', f0: 900, f1: 3200, q: 1.6, peak: 0.6, attack: 0.03, decay: 0.14 });
   });
 
+  // Sacar el cuchillo de la funda: roce de la hoja y un pequeño clic metálico.
+  def('knifeDraw', function () {
+    const out = this._out(rand(0.05, 0.15), 0.03, 0.32);
+    this.noise(out, { type: 'bandpass', f0: 2600, f1: 5200, q: 3, peak: 0.35, attack: 0.02, decay: 0.12 });
+    this.tone(out, { type: 'sine', f0: rand(3900, 4300), peak: 0.05, decay: 0.12, delay: 0.1 });
+  });
+
+  // Cuchillada que entra: golpe sordo y corto, sin metal.
+  def('stab', function () {
+    const out = this._out(rand(-0.05, 0.05), 0.04, 0.5);
+    this.noise(out, { type: 'lowpass', f0: 650, f1: 220, peak: 0.8, decay: 0.08, pink: true });
+    this.tone(out, { f0: 120, f1: 70, peak: 0.35, decay: 0.07 });
+  });
+
   def('weaponSwap', function () {
     const out = this._out(rand(-0.1, 0.1), 0.03, 0.4);
     this.noise(out, { type: 'bandpass', f0: 1500, q: 1.2, peak: 0.35, attack: 0.01, decay: 0.09, pink: true });
@@ -155,6 +169,17 @@ export function installSounds(proto) {
     const out = this._out(rand(-0.3, 0.3), 0.05, 0.6);
     this.noise(out, { type: 'lowpass', f0: 420, peak: 0.9, decay: 0.12, pink: true });
     this.tone(out, { f0: 140, f1: 60, peak: 0.6, decay: 0.14 });
+  });
+
+  // Tos corta y suave al agotar la resistencia: un golpe de aire con algo de voz y otro más flojo detrás.
+  def('cough', function () {
+    const out = this._out(0, 0.04, 0.32);
+    const p = rand(0.92, 1.08);
+    for (const [d, k] of [[0, 1], [rand(0.2, 0.26), 0.55]]) {
+      this.noise(out, { type: 'bandpass', f0: 750 * p, f1: 480 * p, q: 1.3, peak: 0.55 * k, attack: 0.008, decay: 0.11, delay: d, pink: true });
+      this.noise(out, { type: 'bandpass', f0: 1900 * p, q: 2.2, peak: 0.16 * k, attack: 0.006, decay: 0.06, delay: d });
+      this.tone(out, { type: 'triangle', f0: 150 * p, f1: 110 * p, peak: 0.08 * k, attack: 0.01, decay: 0.09, delay: d });
+    }
   });
 
   def('whizz', function (side) {

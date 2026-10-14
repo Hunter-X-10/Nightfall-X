@@ -6,8 +6,9 @@ import { hostLink, guestLink } from './p2p.js';
 export const TEAMS = ['ALFA', 'BRAVO'];
 export const TEAM_COLORS = ['#6fb6ff', '#ff7a5c'];
 
-// Bits de estado que acompañan a la posición de cada jugador. DEAD lo fija el servidor.
-export const FLAG = { CROUCH: 1, SPRINT: 2, AIM: 4, LIGHT: 8, DEAD: 16, SHIELD: 32 };
+// Bits de estado que acompañan a la posición de cada jugador. DEAD lo fija el servidor. LOCK (bit 10): está
+// rematando a alguien con el cuchillo y no se le puede dañar.
+export const FLAG = { CROUCH: 1, SPRINT: 2, AIM: 4, LIGHT: 8, DEAD: 16, SHIELD: 32, LOCK: 1024 };
 export const WEAPON_SHIFT = 6; // los bits 6 y 7 llevan el arma en mano (índice de WEAPONS)
 export const LEAN_SHIFT = 8; // los bits 8 y 9, hacia dónde se asoma: 0 nada, 1 izquierda, 2 derecha
 // Zona del cuerpo alcanzada por un disparo.
@@ -108,7 +109,8 @@ export class Net {
   // Disparo propio, de `o` a `e`. kind: 0 = al mundo o al aire, 1 = ha alcanzado a un jugador.
   fire(o, e, kind) { this.send({ t: 'f', d: [r2(o.x), r2(o.y), r2(o.z), r2(e.x), r2(e.y), r2(e.z), kind] }); }
   // w: arma (índice de WEAPONS) con la que se ha hecho el daño.
-  hit(to, dmg, part, w) { this.send({ t: 'hit', to, dmg: r2(dmg), part, w }); }
+  // k = 1: puñalada rápida, que deja a la víctima con poca vida (la calcula ella al recibirla; ver main.js).
+  hit(to, dmg, part, w, k = 0) { this.send({ t: 'hit', to, dmg: r2(dmg), part, w, k }); }
   died(by, part, w) { this.send({ t: 'died', by, part, w }); }
   spawned() { this.send({ t: 'spawn' }); }
   barrel(i, by) { this.send({ t: 'bar', i, by }); }

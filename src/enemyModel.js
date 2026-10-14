@@ -21,6 +21,11 @@ export const LEAN_HIP = 0.15;
 export const LEAN_SPINE = 0.42;
 export const ARM_UP = 0.29;
 export const ARM_FORE = 0.3;
+// Remate con el cuchillo por la espalda (segundos desde que se agarra a la víctima): el atacante clava el
+// cuchillo en TAKEDOWN_STAB y recupera el control en TAKEDOWN_TIME; la víctima cae desde TAKEDOWN_FALL.
+export const TAKEDOWN_STAB = 0.52;
+export const TAKEDOWN_TIME = 1.2;
+const TAKEDOWN_FALL = 0.95;
 
 // Aspectos: 0 guardia de la misión (IA), 1 ALFA (operador táctico), 2 BRAVO (insurgente).
 // `accent` es el color del equipo: sólo va en parches, brazalete y pañuelo.
@@ -324,29 +329,46 @@ export function createSoldier(surf, look = 0) {
   return { mesh, bone };
 }
 
+// Pose de la víctima de un remate, `t` segundos después de agarrarla: la echan hacia atrás (grab), se
+// desploma tras la puñalada (slump) y cae de bruces. Quien llama pone a 0 la marcha, el apuntado y el agachado.
+export function takedownPose(p, t) {
+  p.grab = smoothstep(0.1, 0.38, t) * (1 - smoothstep(0.75, 1.05, t));
+  p.slump = smoothstep(0.58, 1.0, t);
+  p.death = Math.min(1, Math.max(0, (t - TAKEDOWN_FALL) / 0.75));
+  p.deathDir = -1; p.deathTwist = 0.2;
+  p.flinchX = 0; p.flinchY = 0;
+}
+
 // Aplica la pose. p: { phase, walk, crouch, aim, aimPitch, flinchX, flinchY, death, deathDir, lean }
-// Opcionales (jugadores): weapon (0 fusil, 1 pistola, 2 cuchillo) y swing (avance 0-1 del tajo).
+// Opcionales: weapon (0 fusil, 1 pistola, 2 cuchillo) y swing (avance 0-1 del tajo), de los jugadores;
+// grab y slump (0-1), de la víctima de un remate (ver takedownPose). Sólo se usan en soldados que ya no
+// reciben disparos, así que no cambian las zonas de impacto.
 export function poseSoldier(s, p) {
   const b = s.bone;
   const sw = Math.sin(p.phase);
   const walk = p.walk;
   const cr = p.crouch;
+  const grab = p.grab || 0; const slump = p.slump || 0;
+  const knee = Math.max(cr, slump * 0.55); // al desplomarse se le doblan las rodillas
   // Piernas: marcha + flexión al agacharse.
-  const thigh = -cr * 1.15;
-  const shin = cr * 2.05;
+  const thigh = -knee * 1.15;
+  const shin = knee * 2.05;
   b.thighL.rotation.x = thigh + sw * 0.62 * walk;
   b.thighR.rotation.x = thigh - sw * 0.62 * walk;
   b.shinL.rotation.x = shin + Math.max(0, -Math.cos(p.phase)) * 0.95 * walk;
   b.shinR.rotation.x = shin + Math.max(0, Math.cos(p.phase)) * 0.95 * walk;
-  b.thighL.rotation.z = cr * 0.12; b.thighR.rotation.z = -cr * 0.12;
-  b.pelvis.position.y = 0.95 - cr * 0.4 + Math.abs(Math.cos(p.phase)) * 0.035 * walk;
+  b.thighL.rotation.z = knee * 0.12; b.thighR.rotation.z = -knee * 0.12;
+  b.pelvis.position.y = 0.95 - knee * 0.4 + Math.abs(Math.cos(p.phase)) * 0.035 * walk;
   b.pelvis.rotation.y = sw * 0.09 * walk;
   // Asomarse (lean -1 izquierda, 1 derecha): la cadera se aparta y el torso se inclina hacia ese lado.
   // El modelo mira a +Z, así que su derecha es -X. Las cápsulas de impacto usan LEAN_HIP y LEAN_SPINE.
   b.pelvis.position.x = -p.lean * LEAN_HIP;
   // Torso: inclinación al correr, apuntado vertical y sacudida por impacto.
-  b.spine.rotation.set(0.1 * walk + cr * 0.28 - p.aimPitch * p.aim * 0.75 + p.flinchX, -sw * 0.11 * walk + p.flinchY + p.aim * -0.22, p.lean * LEAN_SPINE);
-  b.head.rotation.set(-cr * 0.2 - p.aimPitch * p.aim * 0.2 - 0.1 * walk, p.aim * 0.2 + (1 - p.aim) * Math.sin(p.look) * 0.5, 0);
+  // Remate: arqueado hacia atrás con la cabeza levantada al agarrarlo; luego se vence hacia delante.
+  b.spine.rotation.set(0.1 * walk + cr * 0.28 - p.aimPitch * p.aim * 0.75 + p.flinchX - grab * 0.3 + slump * 0.32,
+    -sw * 0.11 * walk + p.flinchY + p.aim * -0.22, p.lean * LEAN_SPINE);
+  b.head.rotation.set(-cr * 0.2 - p.aimPitch * p.aim * 0.2 - 0.1 * walk - grab * 0.55 + slump * 0.75,
+    (p.aim * 0.2 + (1 - p.aim) * Math.sin(p.look) * 0.5) * (1 - Math.max(grab, slump)), 0);
 
   const a = p.aim;
   const weapon = p.weapon || 0;
@@ -364,6 +386,12 @@ export function poseSoldier(s, p) {
     _grip.set(-0.13 + a * 0.01, 0.1 + a * 0.16, 0.2 + a * 0.07);
     _ge.set((1 - a) * 0.62 + sw * 0.03 * walk, (1 - a) * 0.72 + a * 0.2, (1 - a) * 0.25);
   }
+  // Remate: el arma se le cae hacia abajo, colgando de la mano derecha.
+  const drop = Math.max(grab, slump);
+  if (drop > 0) {
+    _grip.lerp(_t.set(-0.17, -0.2, 0.14), drop);
+    _ge.set(_ge.x + (1.25 - _ge.x) * drop, _ge.y * (1 - drop), _ge.z * (1 - drop));
+  }
   _gq.setFromEuler(_ge);
   b.gun.position.copy(_grip);
   b.gun.quaternion.copy(_gq);
@@ -372,6 +400,9 @@ export function poseSoldier(s, p) {
   solveArm(b.armR, b.foreR, -0.21, 0.34, 0, _hand, -0.5, -1, -0.3);
   if (weapon === 2) _hand.set(0.17, 0.08 + a * 0.06, 0.26);
   else _hand.set(weapon === 1 ? 0.035 : 0, weapon === 1 ? -0.05 : 0, weapon === 1 ? 0.0 : 0.34).applyQuaternion(_gq).add(_grip);
+  // Remate: la izquierda va al cuello al agarrarlo y después cuelga.
+  if (grab > 0) _hand.lerp(_t.set(0.05, 0.4, 0.13), grab);
+  if (slump > 0) _hand.lerp(_t.set(0.26, -0.12, 0.06), slump);
   solveArm(b.armL, b.foreL, 0.21, 0.34, 0, _hand, 0.7, -1, 0.1);
 
   // Caída al morir: el cuerpo gira sobre los pies y las extremidades se sueltan.
@@ -384,7 +415,7 @@ export function poseSoldier(s, p) {
     b.head.rotation.x += -0.3 * ease * p.deathDir;
     b.thighL.rotation.x = thigh * (1 - ease) + 0.35 * ease; b.thighR.rotation.x = thigh * (1 - ease) - 0.15 * ease;
     b.shinL.rotation.x = shin * (1 - ease) + 0.5 * ease; b.shinR.rotation.x = shin * (1 - ease) + 0.15 * ease;
-    b.pelvis.position.y = 0.95 - cr * 0.4 * (1 - ease);
+    b.pelvis.position.y = 0.95 - knee * 0.4 * (1 - ease);
     b.armL.rotation.z -= ease * 0.9; b.armR.rotation.z += ease * 0.7;
   } else {
     b.root.rotation.set(0, 0, 0);

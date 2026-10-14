@@ -1,5 +1,6 @@
 // Modelos procedurales de las armas en primera persona: carabina con mira holográfica y linterna,
-// pistola compacta y cuchillo de combate, cada uno con sus manos. Las piezas con forma (cajón, cargador,
+// pistola compacta y cuchillo de combate, cada uno con sus manos, más una mano izquierda libre para los
+// remates con el cuchillo. Las piezas con forma (cajón, cargador,
 // empuñaduras, culata, armazón) son siluetas laterales extruidas; los dedos, cadenas de cilindros.
 // Unidades reales en metros; el grupo raíz se escala y cuelga de la cámara. -Z = hacia delante.
 import * as THREE from 'three';
@@ -352,8 +353,9 @@ export function buildPistolModel(surf) {
 }
 
 // ---------- Cuchillo ----------
-// Hoja hacia delante (-Z), filo hacia abajo, empuñado con la mano derecha.
-export function buildKnifeModel(surf) {
+// Hoja hacia delante (-Z), filo hacia abajo, empuñado con la mano derecha. `forearm`: hasta dónde llega la
+// manga. La del golpe rápido baja casi en vertical para salir por debajo de la pantalla con la mano al centro.
+export function buildKnifeModel(surf, forearm = [0.15, -0.26, 0.44]) {
   const root = new THREE.Group();
   root.name = 'viewmodel-knife';
   const { mat, put, rbox, box, finger, flush } = kit(surf);
@@ -392,7 +394,7 @@ export function buildKnifeModel(surf) {
     finger(mat.glove, [[0.018, 0.018, z], [0.002, 0.026, z], [-0.016, 0.014, z], [-0.017, -0.01, z], [-0.004, -0.021, z]], 0.0088, 0.008);
   }
   finger(mat.glove, [[0.016, 0.014, 0.004], [0.004, 0.026, -0.012], [-0.003, 0.027, -0.03]], 0.0105, 0.009);
-  put(mat.sleeve, between([0.014, -0.03, 0.075], [0.15, -0.26, 0.44], 0.034, 0.055));
+  put(mat.sleeve, between([0.014, -0.03, 0.075], forearm, 0.034, 0.055));
   put(mat.glove, between([0.008, -0.018, 0.06], [0.026, -0.05, 0.1], 0.036, 0.037));
   flush(rightArm);
   root.add(rightArm);
@@ -401,4 +403,27 @@ export function buildKnifeModel(surf) {
 
   finish(root);
   return { root, rightArm, charm };
+}
+
+// ---------- Mano izquierda libre ----------
+// Agarra a la víctima de un remate por el hombro: palma hacia abajo, dorso a la vista, dedos hacia delante
+// doblándose hacia abajo y pulgar por la derecha. El origen es el centro de la palma.
+export function buildGrabHand(surf) {
+  const root = new THREE.Group();
+  root.name = 'viewmodel-grab';
+  const { mat, put, rbox, finger, flush } = kit(surf);
+  rbox(mat.glove, 0.084, 0.03, 0.09, 0, 0, 0, 0, 0, 0, 0.012);
+  rbox(mat.pad, 0.056, 0.01, 0.05, -0.004, 0.016, 0.006, 0, 0, 0, 0.004);
+  for (let i = 0; i < 4; i++) {
+    const x = -0.03 + i * 0.02; const k = 1 - Math.abs(i - 1.3) * 0.08; // el corazón, el más largo
+    finger(mat.glove, [[x, 0, -0.04], [x, -0.003, -0.04 - 0.036 * k], [x, -0.026, -0.04 - 0.062 * k], [x, -0.054, -0.04 - 0.068 * k]], 0.0092, 0.008);
+  }
+  finger(mat.glove, [[0.036, -0.008, 0.012], [0.058, -0.026, -0.022], [0.062, -0.052, -0.044]], 0.0108, 0.009); // pulgar
+  put(mat.glove, between([0, -0.006, 0.04], [-0.02, -0.03, 0.09], 0.036, 0.037)); // puño del guante
+  put(mat.sleeve, between([-0.012, -0.018, 0.07], [-0.15, -0.26, 0.47], 0.034, 0.056));
+  rbox(mat.dark, 0.034, 0.009, 0.034, -0.03, 0.012, 0.085, 0, 0, 0.3, 0.003); // reloj
+  rbox(mat.black, 0.024, 0.004, 0.024, -0.03, 0.018, 0.085, 0, 0, 0.3, 0.0015);
+  flush(root);
+  finish(root);
+  return { root };
 }

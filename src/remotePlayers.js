@@ -2,7 +2,7 @@
 // las instantáneas que reparte el servidor, con cápsulas de impacto para los disparos y el nombre sobre la
 // cabeza: el de los compañeros se ve siempre; el de los rivales, sólo mientras se les apunta.
 import * as THREE from 'three';
-import { createSoldier, poseSoldier, soldierGeometry, LEAN_HIP, LEAN_SPINE } from './enemyModel.js';
+import { createSoldier, poseSoldier, soldierGeometry, takedownPose, LEAN_HIP, LEAN_SPINE, TAKEDOWN_TIME } from './enemyModel.js';
 import { coneGeometry, coneMaterial, flare } from './volumetric.js';
 import { FLAG, LEAN_SHIFT, PART, TEAM_COLORS, WEAPON_SHIFT } from './net.js';
 import { angleDelta, clamp, damp, lerp, rand, rayCapsule } from './utils.js';
@@ -72,7 +72,8 @@ export class RemotePlayers {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, flags: 0, speed: 0, placed: false,
       killed: false, // baja confirmada por el servidor antes de que llegue en las instantáneas
       weapon: 0, swingT: 1, revealT: 0, tagA: 0,
-      pose: { phase: p.id * 1.3, walk: 0, crouch: 0, aim: 1, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0.3, lean: 0, look: 0 },
+      td: -1, tdX: 0, tdY: 0, tdZ: 0, tdYaw: 0, // remate con el cuchillo (sólo lo ve quien lo hace): segundos desde que empezó
+      pose: { phase: p.id * 1.3, walk: 0, crouch: 0, aim: 1, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0.3, lean: 0, look: 0, grab: 0, slump: 0 },
     };
   }
 
@@ -127,14 +128,17 @@ export class RemotePlayers {
 
   isDown(r) { return r.killed || (r.flags & FLAG.DEAD) !== 0; }
 
+  // ¿Se le puede dañar? No mientras está protegido tras reaparecer ni mientras remata a alguien.
+  isImmune(r) { return (r.flags & (FLAG.SHIELD | FLAG.LOCK)) !== 0; }
+
   // Rayo de un disparo contra los jugadores tal y como se ven en pantalla.
   // skipTeam: equipo al que no se puede dañar (-1 = ninguno). pad: holgura de las cápsulas (cuerpo a
-  // cuerpo, o para saber a quién se mira). shielded: incluir a los protegidos tras reaparecer.
+  // cuerpo, o para saber a quién se mira). shielded: incluir a los que no se puede dañar (isImmune).
   // Devuelve { player, part, dist } o null.
   raycast(ox, oy, oz, dx, dy, dz, maxT, skipTeam = -1, pad = 0, shielded = false) {
     let best = null; let bt = maxT;
     for (const r of this.map.values()) {
-      if (!r.placed || r.team === skipTeam || this.isDown(r) || (!shielded && r.flags & FLAG.SHIELD)) continue;
+      if (!r.placed || r.team === skipTeam || this.isDown(r) || (!shielded && this.isImmune(r))) continue;
       const cr = r.pose.crouch;
       const hipY = r.y + 0.95 - cr * 0.4; const shY = hipY + 0.5;
       const lean = cr * 0.12;
@@ -175,6 +179,13 @@ export class RemotePlayers {
 
   // Lanza la animación del tajo de cuchillo.
   swing(r) { r.swingT = 0; }
+
+  // Remate por la espalda: sólo en esta pantalla, el soldado se queda donde está y hace la animación de la
+  // víctima (ver takedownPose) en lugar de la caída normal. Los demás jugadores sólo lo ven caer.
+  takedown(r) {
+    r.td = 0;
+    r.tdX = r.x; r.tdY = r.y; r.tdZ = r.z; r.tdYaw = r.yaw;
+  }
 
   // Posición en el mundo de la boca del cañón (vector compartido: úsalo antes de volver a llamar).
   muzzle(r) {
@@ -230,19 +241,37 @@ export class RemotePlayers {
       if (r.swingT < 1) r.swingT = Math.min(1, r.swingT + dt / SWING_TIME);
       p.swing = r.swingT < 1 ? r.swingT : 0;
 
-      const lit = (flags & FLAG.LIGHT) !== 0 && !dead;
+      // Remate en curso (o ya rematado y en el suelo): manda sobre la posición y la pose. Si al terminar no
+      // ha muerto (el golpe no llegó a aplicarse) o ya ha reaparecido, vuelve a dibujarse como dice la red.
+      if (r.td >= 0) {
+        r.td += dt;
+        if (r.td > TAKEDOWN_TIME + 0.6 && !dead) r.td = -1;
+      }
+      const td = r.td >= 0;
+      if (td) {
+        takedownPose(p, r.td);
+        p.walk = 0; p.lean = 0; p.swing = 0;
+        p.crouch = damp(p.crouch, 0, 10, dt); p.aim = damp(p.aim, 0, 10, dt);
+      } else { p.grab = 0; p.slump = 0; }
+
+      const lit = (flags & FLAG.LIGHT) !== 0 && !dead && !td;
       r.cone.visible = lit; r.fl.visible = lit;
 
       poseSoldier(r.s, p);
       const mesh = r.s.mesh;
       // Recién reaparecido y protegido: parpadea mientras no se le puede dañar.
-      mesh.visible = dead || !(flags & FLAG.SHIELD) || blink;
-      mesh.position.set(x, y, z);
-      mesh.rotation.y = r.yaw + Math.PI; // el modelo mira a +Z; la cámara, a -Z
+      mesh.visible = dead || td || !(flags & FLAG.SHIELD) || blink;
+      if (td) {
+        mesh.position.set(r.tdX, r.tdY, r.tdZ);
+        mesh.rotation.y = r.tdYaw + Math.PI;
+      } else {
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = r.yaw + Math.PI; // el modelo mira a +Z; la cámara, a -Z
+      }
 
       // Nombre: siempre el de los compañeros; el de un rival, mientras se le apunta y un momento después.
       if (r.id === focusId) r.revealT = NAME_LINGER; else r.revealT = Math.max(0, r.revealT - dt);
-      const show = !dead && (r.team === myTeam || r.revealT > 0);
+      const show = !dead && !td && (r.team === myTeam || r.revealT > 0);
       r.tagA = damp(r.tagA, show ? 1 : 0, show ? 16 : 6, dt);
       const tag = r.tag;
       tag.visible = r.tagA > 0.02;

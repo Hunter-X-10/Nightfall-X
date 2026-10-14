@@ -1,7 +1,9 @@
 // Armas del jugador: fusil, pistola y cuchillo. Selección con animación de cambio, disparo por raycast
-// (o tajo cuerpo a cuerpo), dispersión, retroceso, recarga animada, balanceo y linterna.
+// (o tajo cuerpo a cuerpo), dispersión, retroceso, recarga animada, balanceo, linterna y golpe rápido
+// con el cuchillo (tecla V): puñalada de lado o remate por la espalda.
 import * as THREE from 'three';
-import { buildViewModel, buildPistolModel, buildKnifeModel, SIGHT_Y, PISTOL_SIGHT_Y } from './viewmodel.js';
+import { buildViewModel, buildPistolModel, buildKnifeModel, buildGrabHand, SIGHT_Y, PISTOL_SIGHT_Y } from './viewmodel.js';
+import { TAKEDOWN_STAB, TAKEDOWN_TIME } from './enemyModel.js';
 import { Charm, loadCharms } from './charms.js';
 import { FRAME } from './sprites.js';
 import { tracer } from './fxRecipes.js';
@@ -33,6 +35,13 @@ export const WEAPONS = [
 
 const SWAP_DOWN = 0.15; const SWAP_UP = 0.22; // segundos para bajar un arma y subir la siguiente
 const SWING_TIME = 0.4; const SWING_HIT = 0.32; // duración del tajo y momento (0-1) en que alcanza
+// Golpe rápido con V (sólo con un rival al lado o de espaldas, ver combat.quickTarget): al azar, dos de cada
+// tres veces es el remate (si hay sitio a su espalda) y si no, la puñalada. Tiempos de la puñalada en segundos;
+// los del remate, en enemyModel.js (los comparte la animación de la víctima).
+const TAKEDOWN_CHANCE = 2 / 3;
+const QUICK_LIGHT = 7; // intensidad de la linterna durante el golpe rápido
+const QUICK_FILL = 0.5; // y luz de relleno añadida (de noche, si no, las manos no se ven)
+const STAB_TIME = 0.8; const STAB_HIT = 0.38;
 // Armería: dónde se expone cada arma ante la cámara y con cuánta luz (están a distinta distancia del foco).
 const SHOW_POSE = [[0.14, 0.005, -0.38], [0.1, 0.02, -0.19], [0.1, 0.01, -0.2]];
 const SHOW_LIGHT = [1.4, 0.4, 0.4];
@@ -58,6 +67,11 @@ export class Weapon {
       return { def: WEAPONS[i], vm, mag: 0, reserve: 0 };
     });
     camera.add(this.root);
+    // Golpe rápido: cuchillo en la mano derecha (con el antebrazo hacia abajo, ver buildKnifeModel) y mano
+    // izquierda libre, que agarra a la víctima en los remates.
+    this.quickKnife = buildKnifeModel(surf, [0.1, -0.5, 0.2]);
+    this.grabHand = buildGrabHand(surf);
+    for (const m of [this.quickKnife, this.grabHand]) { m.root.scale.setScalar(VM_SCALE); m.root.visible = false; this.root.add(m.root); }
 
     // Linterna táctica: siempre en escena (intensidad 0 apagada) para no recompilar shaders.
     this.light = new THREE.SpotLight(0xdde8ff, 0, 60, 0.46, 0.75, 1.2);
@@ -90,10 +104,12 @@ export class Weapon {
   showcase(dt, time, i) {
     this.root.visible = true;
     this.slots.forEach((s, k) => { s.vm.root.visible = k === i; });
+    this.quickKnife.root.visible = false; this.grabHand.root.visible = false;
     const vm = this.slots[i].vm;
     // Piezas móviles en su sitio, por si la última partida las dejó a medias.
     if (vm.mag) { vm.mag.position.y = i === RIFLE ? -0.085 : 0; vm.mag.visible = true; }
     if (vm.leftArm) vm.leftArm.position.set(0, 0, 0);
+    vm.rightArm.position.set(0, 0, 0);
     if (vm.slide) vm.slide.position.z = 0;
     if (vm.lensUniforms) vm.lensUniforms.uGain.value = 0;
     if (vm.lampLens) vm.lampLens.visible = false;
@@ -149,11 +165,16 @@ export class Weapon {
     this.swayX = 0; this.swayY = 0; this.sprintT = 0; this.crouchT = 0; this.lowerT = 0;
     this.boltT = 1;
     this.swingT = 1; this.swingDone = true; // tajo del cuchillo (1 = en reposo)
+    this.quick = null; // golpe rápido en curso: { kind: 'stab' | 'takedown', t, target, done, swung }
+    this.quickTarget = null; // rival al que se le puede dar el golpe rápido ahora mismo (ver combat.quickTarget)
+    for (const { vm } of this.slots) { vm.rightArm.position.set(0, 0, 0); vm.rightArm.visible = true; }
+    this.quickKnife.root.visible = false; this.grabHand.root.visible = false;
     this.time = 0;
     this.smoke = 0;
     this.dryLatch = false;
     this.fireLatch = false;
     this.fillKick = 0;
+    this.quickGlow = 0; // relleno extra para ver las manos y a la víctima durante el golpe rápido
     this.root.visible = true;
     this.show(first);
   }
@@ -167,7 +188,7 @@ export class Weapon {
 
   // Pide cambiar de arma: baja la actual, cambia y sube la nueva.
   select(i) {
-    if (!this.allowed[i] || i === (this.pending >= 0 ? this.pending : this.cur)) return;
+    if (this.quick || !this.allowed[i] || i === (this.pending >= 0 ? this.pending : this.cur)) return;
     this.reloading = false; this.reloadT = 0;
     this.swingT = 1; this.swingDone = true;
     this.pending = i === this.cur ? -1 : i;
@@ -209,12 +230,18 @@ export class Weapon {
     } else if (this.drawT > 0) this.drawT = Math.max(0, this.drawT - dt / SWAP_UP);
     const ready = this.pending < 0 && this.drawT < 0.35;
 
+    // --- Golpe rápido con V ---
+    if (dead) this.quick = null;
+    this.quickTarget = !dead && ready && !this.quick ? game.quickTarget() : null;
+    if (this.quickTarget && input.hit('KeyV')) this.startQuick(player, game);
+    if (this.quick) this.updateQuick(dt, player, game);
+
     const def = this.def;
     const slot = this.slot;
     player.aimZoom = def.zoom;
     player.speedK = def.speed;
-    this.aiming = !dead && ready && input.aim && !def.melee && !this.reloading && !player.sprinting;
-    if (!dead && ready) {
+    this.aiming = !dead && ready && !this.quick && input.aim && !def.melee && !this.reloading && !player.sprinting;
+    if (!dead && ready && !this.quick) {
       if (input.hit('KeyR')) this.startReload();
       if (!input.fire) { this.dryLatch = false; this.fireLatch = false; }
       // El cuchillo se puede usar a la carrera; las armas de fuego, no.
@@ -241,11 +268,14 @@ export class Weapon {
     this.updatePose(dt, player, dead);
 
     // Linterna.
-    const target = this.lightOn && !dead ? LIGHT_POWER : 0;
+    // Durante el golpe rápido el arma baja y su linterna apunta al suelo: queda un resplandor tenue (a
+    // pleno, con la víctima a menos de un metro, quemaría la imagen a blanco).
+    const target = this.lightOn && !dead ? (this.quick ? QUICK_LIGHT : LIGHT_POWER) : 0;
     this.light.intensity = damp(this.light.intensity, target, 18, dt);
     this.slots[RIFLE].vm.lampLens.visible = this.light.intensity > 5;
     this.fillKick *= Math.exp(-dt * 28);
-    this.fill.intensity = 0.06 + this.fillKick * 0.22;
+    this.quickGlow = damp(this.quickGlow, this.quick ? 1 : 0, 8, dt);
+    this.fill.intensity = 0.06 + this.fillKick * 0.22 + this.quickGlow * QUICK_FILL;
     this.fill.color.setRGB(0.66 + this.fillKick * 0.34, 0.73 - this.fillKick * 0.1, 0.85 - this.fillKick * 0.5);
     this.camera.getWorldDirection(this.lightDir);
     this.light.getWorldPosition(this.lightPos);
@@ -348,6 +378,68 @@ export class Weapon {
     if (game.playerMelee(_o, _d, this.def.reach)) player.addShake(0.12);
   }
 
+  // Golpe rápido: la mano derecha suelta el arma, saca el cuchillo de la cintura y apuñala. Corta la recarga.
+  startQuick(player, game) {
+    const t = this.quickTarget;
+    const spot = Math.random() < TAKEDOWN_CHANCE ? player.takedownSpot(t) : null;
+    this.quick = { kind: spot ? 'takedown' : 'stab', t: 0, target: t, done: false, swung: false };
+    this.quickTarget = null;
+    this.reloading = false; this.reloadT = 0;
+    this.swingT = 1; this.swingDone = true;
+    this.sinceShot = 0; // atacar quita la protección de reaparecer
+    this.audio.knifeDraw();
+    if (spot) { player.startTakedown(spot, t, TAKEDOWN_TIME); game.takedownStart(t); }
+  }
+
+  updateQuick(dt, player, game) {
+    const q = this.quick;
+    q.t += dt;
+    if (q.kind === 'stab') {
+      if (!q.swung && q.t >= 0.3) { q.swung = true; this.audio.knifeSwing(); }
+      if (!q.done && q.t >= STAB_HIT) { q.done = true; if (game.quickStab(q.target)) player.addShake(0.12); }
+      if (q.t >= STAB_TIME) this.quick = null;
+    } else {
+      if (!q.swung && q.t >= 0.42) { q.swung = true; this.audio.knifeSwing(); }
+      if (!q.done && q.t >= TAKEDOWN_STAB) { q.done = true; game.takedownStab(q.target); player.addShake(0.18); player.punchVP -= 0.5; }
+      // El jugador recupera el control a la vez (player.lock) y el arma sube como tras un cambio.
+      if (q.t >= TAKEDOWN_TIME) { this.quick = null; this.drawT = 1; }
+    }
+  }
+
+  // Cuchillo del golpe rápido en la mano derecha, `t` segundos después de pulsar V. Sube desde abajo (de la
+  // cintura, fuera de la vista), apuñala y vuelve a bajar.
+  poseQuick(root, t, kind) {
+    let x; let y; let z; let rx; let ry; let rz;
+    if (kind === 'stab') {
+      const up = ss(0.12, 0.3, t) * (1 - ss(0.48, 0.66, t));
+      const thrust = ss(0.3, 0.4, t) * (1 - ss(0.44, 0.58, t)); // estocada al frente, al costado del rival
+      x = 0.1 - 0.075 * thrust; y = -0.13 - 0.3 * (1 - up) + 0.04 * thrust; z = -0.27 + 0.08 * (1 - up) - 0.17 * thrust;
+      rx = 0.12 - 0.7 * (1 - up) + 0.04 * thrust; ry = 0.2 + 0.1 * thrust; rz = 0.28;
+    } else {
+      const up = ss(0.16, 0.4, t) * (1 - ss(0.86, 1.06, t));
+      const thrust = ss(0.42, TAKEDOWN_STAB, t) * (1 - ss(0.8, 0.94, t)); // al cuello y fuera
+      const twist = ss(TAKEDOWN_STAB, 0.7, t) * (1 - ss(0.8, 0.9, t));
+      // Desde abajo y hacia arriba, con el antebrazo saliendo por la parte de abajo de la pantalla.
+      x = 0.12 - 0.07 * thrust; y = -0.16 - 0.3 * (1 - up) + 0.06 * thrust; z = -0.27 + 0.08 * (1 - up) - 0.11 * thrust;
+      rx = 0.42 - 0.9 * (1 - up); ry = 0.42 + 0.14 * thrust; rz = 0.3 + 0.12 * twist;
+    }
+    const breath = Math.sin(this.time * 1.55) * 0.0015;
+    root.position.set(x * VM_SCALE, (y + breath) * VM_SCALE, z * VM_SCALE);
+    root.rotation.set(rx, ry, rz);
+  }
+
+  // Mano izquierda del remate: sube, agarra a la víctima por el hombro, tira de ella y la suelta.
+  poseGrab(t) {
+    const root = this.grabHand.root;
+    root.visible = t > 0.04 && t < 1.12;
+    if (!root.visible) return;
+    const reach = ss(0.06, 0.3, t) * (1 - ss(0.88, 1.1, t));
+    const pull = ss(0.24, 0.42, t) * (1 - ss(0.78, 0.98, t));
+    const away = 1 - reach;
+    root.position.set((-0.08 - 0.08 * away) * VM_SCALE, (-0.07 - 0.3 * away - 0.01 * pull) * VM_SCALE, (-0.36 + 0.2 * away + 0.05 * pull) * VM_SCALE);
+    root.rotation.set(0.15 - 0.6 * away, -0.35, -0.25);
+  }
+
   updateReload(dt) {
     const s = this.slot;
     this.reloadT += dt;
@@ -387,7 +479,13 @@ export class Weapon {
     const bx = Math.cos(player.bob) * 0.0075 * bobK;
     const by = -Math.abs(Math.sin(player.bob)) * 0.0085 * bobK;
     const breath = Math.sin(this.time * 1.55) * (0.0018 * hipK + 0.0004);
-    const low = Math.max(this.lowerT, ss(0, 1, this.drawT)); // muerto o cambiando de arma
+    // Golpe rápido: en la puñalada la mano derecha baja a la cintura a por el cuchillo (handOut) y el arma
+    // se queda en la izquierda; en el remate el arma baja del todo. knifeOut: el cuchillo está en la mano.
+    const q = this.quick; const qt = q ? q.t : 0;
+    const takedown = q !== null && q.kind === 'takedown';
+    const handOut = q && !takedown ? ss(0, 0.14, qt) * (1 - ss(0.6, 0.78, qt)) : 0;
+    const knifeOut = q !== null && (takedown ? qt > 0.16 && qt < 1.08 : qt > 0.12 && qt < 0.66);
+    const low = Math.max(this.lowerT, ss(0, 1, this.drawT), takedown ? ss(0, 0.18, qt) : 0); // muerto, cambiando de arma o rematando
 
     let px = lerp(def.hip[0], def.ads[0], aim) + bx - this.swayX * 0.12 * hipK - sp * 0.03;
     let py = lerp(def.hip[1], def.ads[1], aim) + by + breath - this.swayY * 0.1 * hipK - sp * 0.035 - player.landDip * 0.5
@@ -397,6 +495,16 @@ export class Weapon {
     let ry = this.swayX * 1.1 * (0.3 + 0.7 * hipK) + this.jitY * this.kick * 0.002 + sp * 0.66 + hipK * 0.012;
     let rz = Math.cos(player.bob) * 0.014 * bobK + player.roll * 1.6 + this.jitZ * this.kick * 0.004 - this.swayX * 0.6 * hipK
       + this.crouchT * 0.07 * hipK + sp * 0.16;
+    if (handOut > 0) {
+      // Puñalada: el arma de fuego, sujeta sólo con la izquierda, baja un poco y se ladea; el cuchillo en
+      // mano baja a la cintura como si se cambiara de agarre.
+      if (this.cur !== KNIFE) { px -= 0.05 * handOut; py -= 0.12 * handOut; pz += 0.03 * handOut; rz += 0.22 * handOut; rx -= 0.3 * handOut; ry += 0.05 * handOut; }
+      else { py -= 0.35 * handOut; rx -= 0.7 * handOut; }
+    }
+    if (this.cur !== KNIFE) {
+      vm.rightArm.position.set(0.03 * handOut, -0.3 * handOut, 0.1 * handOut);
+      vm.rightArm.visible = handOut < 0.98;
+    }
 
     this.boltT = Math.min(1, this.boltT + dt * 14);
     const r = this.reloading ? this.reloadT / def.reloadTime : 0;
@@ -465,6 +573,13 @@ export class Weapon {
 
     vm.root.position.set(px * VM_SCALE, py * VM_SCALE, pz * VM_SCALE);
     vm.root.rotation.set(rx, ry, rz);
+
+    // Cuchillo del golpe rápido; con el cuchillo en mano, ocupa su lugar mientras se apuñala.
+    this.slots[KNIFE].vm.root.visible = this.cur === KNIFE && !knifeOut;
+    this.quickKnife.root.visible = knifeOut;
+    if (knifeOut) this.poseQuick(this.quickKnife.root, qt, q.kind);
+    if (takedown) this.poseGrab(qt);
+    else this.grabHand.root.visible = false;
 
     const charm = this.charms[this.cur];
     if (charm) { charm.face = 0; charm.update(dt, vm.root, vm.charm, this.camera); }

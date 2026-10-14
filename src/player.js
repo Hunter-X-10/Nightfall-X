@@ -1,7 +1,8 @@
 // Controlador en primera persona: movimiento con inercia, sprint, agacharse, salto, cobertura (al agacharse
-// junto a un obstáculo) con asomarse a los lados, balanceo de cabeza, retroceso de cámara y salud con regeneración.
+// junto a un obstáculo) con asomarse a los lados, balanceo de cabeza, retroceso de cámara, resistencia para el
+// sprint, salud con regeneración y el bloqueo durante un remate con el cuchillo.
 import * as THREE from 'three';
-import { clamp, damp, lerp } from './utils.js';
+import { angleDelta, clamp, damp, lerp, smoothstep } from './utils.js';
 import { BASE, ROAD, SPAWN } from './layout.js';
 
 const RADIUS = 0.38;
@@ -15,15 +16,27 @@ const LEAN_DROP = 0.13;
 const LEAN_ROLL = 0.17;
 const COVER_REACH = 0.35; // distancia máxima al obstáculo para ponerse a cubierto
 const COVER_LOW = 1.45; // una cobertura más baja deja asomarse por encima al apuntar
+// Resistencia (0-1): el sprint la gasta en 5 s y, tras una pausa, se recupera en ~4 s andando o ~3 s
+// quieto o agachado. Si se agota no se vuelve a esprintar hasta recuperar STAMINA_MIN (evita tirones).
+const STAMINA_DRAIN = 0.2;
+const STAMINA_REGEN = 0.25;
+const STAMINA_REGEN_REST = 0.34;
+const STAMINA_DELAY = 1;
+const STAMINA_MIN = 0.3;
+const STAMINA_JUMP = 0.1;
+// Remate: el jugador se coloca a esta distancia detrás de la víctima, mirando a su nuca.
+const TAKEDOWN_DIST = 0.7;
+const TAKEDOWN_MOVE = 0.22; // segundos para llegar a ese sitio
 const _mouse = { x: 0, y: 0 };
 const _cover = {};
 const _ray = {};
+const _spot = { x: 0, z: 0 };
 
 export class Player {
   constructor(camera, col, events) {
     this.camera = camera;
     this.col = col;
-    this.events = events; // { step(surface, loud), land(v), hurt(amount), death() }
+    this.events = events; // { step(surface, loud), land(v), hurt(amount), death(), exhausted() }
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this.sensitivity = 1;
@@ -47,6 +60,9 @@ export class Player {
     this.moving = false;
     this.speed = 0;
     this.health = 100;
+    this.stamina = 1;
+    this.exhausted = false;
+    this.restT = 0; // segundos sin gastar resistencia
     this.dead = false;
     this.invulnerable = false;
     this.lastHurt = -99;
@@ -69,6 +85,7 @@ export class Player {
     this.leanDir = 0; // -1 izquierda, 0 nada, 1 derecha (lo que se pide con Q/E)
     this.lean = 0; // desplazamiento lateral real de la cabeza, en metros (+ derecha)
     this.headX = this.pos.x; this.headZ = this.pos.z; // posición de la cabeza en planta (para la IA)
+    this.lock = null; // remate en curso: no se controla el movimiento ni se recibe daño
   }
 
   get eyeY() { return this.pos.y + this.eye; }
@@ -84,7 +101,7 @@ export class Player {
   addShake(a) { this.shake = Math.min(1.2, this.shake + a); }
 
   damage(amount, fromX, fromZ) {
-    if (this.dead || this.invulnerable) return;
+    if (this.dead || this.invulnerable || this.lock) return;
     this.health -= amount;
     this.lastHurt = this.time;
     this.addShake(0.25);
@@ -104,6 +121,7 @@ export class Player {
   update(dt, input, aiming, canSprint = true) {
     this.time += dt;
     if (this.dead) return this.updateDead(dt);
+    if (this.lock) return this.updateLock(dt, input);
 
     // --- Vista ---
     input.consumeMouse(_mouse);
@@ -133,7 +151,7 @@ export class Player {
     if (wantCrouch && !peekUp) this.crouching = true;
     else if (this.crouching && !this.col.blockedAbove(this.pos.x, this.pos.z, RADIUS, this.pos.y + 1.3, this.pos.y + 1.8)) this.crouching = false;
 
-    this.sprinting = canSprint && input.sprint && fwd > 0.5 && !this.crouching && !aiming && this.onGround;
+    this.sprinting = canSprint && !this.exhausted && input.sprint && fwd > 0.5 && !this.crouching && !aiming && this.onGround;
     const maxSpeed = (this.crouching ? 1.9 : this.sprinting ? 6.4 : aiming ? 2.3 : 3.9) * this.speedK;
 
     const sin = Math.sin(this.yaw); const cos = Math.cos(this.yaw);
@@ -147,8 +165,20 @@ export class Player {
     if (this.onGround && input.hit('Space') && !this.crouching) {
       this.vel.y = 5.7;
       this.onGround = false;
+      this.stamina = Math.max(0, this.stamina - STAMINA_JUMP);
+      this.restT = 0;
     }
     this.vel.y -= GRAVITY * dt;
+
+    // --- Resistencia ---
+    if (this.sprinting) { this.stamina -= STAMINA_DRAIN * dt; this.restT = 0; }
+    else if ((this.restT += dt) > STAMINA_DELAY) {
+      this.stamina = Math.min(1, this.stamina + (this.moving && !this.crouching ? STAMINA_REGEN : STAMINA_REGEN_REST) * dt);
+    }
+    if (this.stamina <= 0) {
+      this.stamina = 0;
+      if (!this.exhausted) { this.exhausted = true; this.events.exhausted?.(); }
+    } else if (this.stamina >= STAMINA_MIN) this.exhausted = false;
 
     // --- Integración con subpasos y colisión ---
     const steps = Math.max(1, Math.ceil((Math.hypot(this.vel.x, this.vel.z) * dt) / 0.18));
@@ -221,6 +251,68 @@ export class Player {
 
     const targetFov = this.baseFov + (this.sprinting ? 8 : 0) - this.aimT * this.aimZoom;
     this.fov = damp(this.fov, targetFov, 9, dt);
+    this.applyCamera();
+  }
+
+  // Sitio desde el que rematar a `t` ({ x, y, z, fx, fz }: posición y hacia dónde mira): a su espalda, con
+  // suelo a la misma altura, sin chocar con nada y sin paredes entre medias. Devuelve { x, z } o null.
+  takedownSpot(t) {
+    const x = t.x - t.fx * TAKEDOWN_DIST; const z = t.z - t.fz * TAKEDOWN_DIST;
+    const gy = this.col.groundHeight(x, z, t.y, 0.32, RADIUS * 0.6);
+    if (Math.abs(gy - t.y) > 0.25) return null;
+    _spot.x = x; _spot.z = z;
+    this.col.resolveCircle(_spot, RADIUS, gy, gy + EYE_STAND + 0.12, 0.32);
+    if (Math.hypot(_spot.x - x, _spot.z - z) > 0.03) return null;
+    const dx = x - this.pos.x; const dz = z - this.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 0.05) {
+      for (const h of [0.45, 1.1]) {
+        if (this.col.raycast(this.pos.x, this.pos.y + h, this.pos.z, dx / d, 0, dz / d, d + RADIUS, 'solid', _ray, false)) return null;
+      }
+    }
+    return { x, z, y: gy };
+  }
+
+  // Empieza un remate desde `spot` (ver takedownSpot) a la víctima `t`. Dura `time` segundos.
+  startTakedown(spot, t, time) {
+    this.lock = {
+      t: 0, time, x0: this.pos.x, z0: this.pos.z, y0: this.pos.y, x1: spot.x, z1: spot.z, y1: spot.y,
+      yaw0: this.yaw, yaw1: Math.atan2(-t.fx, -t.fz), pitch0: this.pitch, pitch1: Math.atan2(t.y + 1.42 - (spot.y + EYE_STAND), TAKEDOWN_DIST),
+    };
+    this.vel.set(0, 0, 0);
+  }
+
+  // Durante el remate: se acerca a la espalda de la víctima y mira a su nuca; el ratón y las teclas no hacen
+  // nada. Al terminar se recupera el control donde se ha quedado, que es un sitio libre (takedownSpot).
+  updateLock(dt, input) {
+    const L = this.lock;
+    input.consumeMouse(_mouse);
+    L.t += dt;
+    const k = smoothstep(0, TAKEDOWN_MOVE, L.t);
+    this.pos.set(lerp(L.x0, L.x1, k), lerp(L.y0, L.y1, k), lerp(L.z0, L.z1, k));
+    this.col.resolveCircle(this.pos, RADIUS, this.pos.y, this.pos.y + 1.8, 0.32);
+    this.yaw = L.yaw0 + angleDelta(L.yaw0, L.yaw1) * k;
+    this.pitch = lerp(L.pitch0, L.pitch1, k);
+    this.vel.set(0, 0, 0);
+    this.onGround = true; this.moving = false; this.sprinting = false; this.speed = 0;
+    this.mouseDX = 0; this.mouseDY = 0;
+    // De pie para llegar al cuello (si no hay techo encima).
+    if (this.crouching && !this.col.blockedAbove(this.pos.x, this.pos.z, RADIUS, this.pos.y + 1.3, this.pos.y + 1.8)) this.crouching = false;
+    this.eye = damp(this.eye, this.crouching ? EYE_CROUCH : EYE_STAND, 11, dt);
+    this.inCover = false; this.leanDir = 0;
+    this.lean = damp(this.lean, 0, 10, dt);
+    this.headX = this.pos.x; this.headZ = this.pos.z;
+    this.bobAmt = damp(this.bobAmt, 0, 8, dt);
+    this.landDip = damp(this.landDip, 0, 7, dt);
+    this.aimT = damp(this.aimT, 0, 14, dt);
+    this.roll = damp(this.roll, 0, 8, dt);
+    this.shake = damp(this.shake, 0, 5.5, dt);
+    this.punchVP += (-this.punchP * 170 - this.punchVP * 17) * dt;
+    this.punchVY += (-this.punchY * 170 - this.punchVY * 17) * dt;
+    this.punchP += this.punchVP * dt;
+    this.punchY += this.punchVY * dt;
+    this.fov = damp(this.fov, this.baseFov, 9, dt);
+    if (L.t >= L.time) this.lock = null;
     this.applyCamera();
   }
 

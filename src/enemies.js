@@ -1,6 +1,6 @@
 // Enemigos: patrulla, detección, cobertura sencilla, ráfagas, daño por zonas y muerte.
 import * as THREE from 'three';
-import { createSoldier, poseSoldier } from './enemyModel.js';
+import { createSoldier, poseSoldier, takedownPose } from './enemyModel.js';
 import { coneGeometry, coneMaterial, flare } from './volumetric.js';
 import { impact, muzzleWorld, tracer } from './fxRecipes.js';
 import { angleDelta, clamp, damp, rand, randSign, rayCapsule } from './utils.js';
@@ -50,8 +50,9 @@ export class Enemies {
         awareness: 0, think: i * 0.03, canSee: false, dist: 99, lostT: 0, lastX: sp.x, lastZ: sp.z,
         coverNode: null, peek: false, peekT: 0, peekX: 0, peekZ: 0, reaction: 0, burst: 0, shotCool: 0, pause: 0, grace: 1,
         stuckT: 0, sx: sp.x, sz: sp.z, sideT: 0, sideX: 0, sideZ: 0, tx: sp.x, tz: sp.z, moving: false, shout: 0, deadT: 0, flinchV: 0, speed: 0,
+        td: -1, // remate con el cuchillo: segundos desde que el jugador lo agarró (-1 = no)
       });
-      Object.assign(e.pose, { phase: i * 1.3, walk: 0, crouch: 0, aim: 0, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0, lean: 0, look: i });
+      Object.assign(e.pose, { phase: i * 1.3, walk: 0, crouch: 0, aim: 0, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0, lean: 0, look: i, grab: 0, slump: 0 });
       e.cone.visible = true; e.fl.visible = true;
       e.s.mesh.visible = this.active;
     });
@@ -98,6 +99,15 @@ export class Enemies {
     }
     if (e.state !== ST.COMBAT) this.engage(e, 0.25);
     return false;
+  }
+
+  // El jugador lo agarra por la espalda para rematarlo: deja de actuar y hace la animación de la víctima.
+  // La muerte llega con la puñalada (damage), sin cambiar la animación.
+  grab(e) {
+    if (e.state === ST.DEAD) return;
+    e.td = 0;
+    e.moving = false;
+    e.cone.visible = false; e.fl.visible = false;
   }
 
   engage(e, reaction = rand(0.5, 0.9)) {
@@ -161,6 +171,16 @@ export class Enemies {
     let combat = 0;
     for (const e of this.list) {
       const p = e.pose;
+      if (e.td >= 0) {
+        // Remate: quieto, sin percibir ni disparar. Al terminar la caída queda muerto en el suelo.
+        e.td += dt;
+        takedownPose(p, e.td);
+        p.walk = 0; p.crouch = damp(p.crouch, 0, 10, dt); p.aim = damp(p.aim, 0, 10, dt);
+        this.applyPose(e);
+        if (p.death >= 1 && e.state === ST.DEAD) { e.td = -1; e.deadT = 9; }
+        else if (e.td > 2.5) { e.td = -1; p.grab = 0; p.slump = 0; p.death = 0; e.cone.visible = true; e.fl.visible = true; } // no llegó la puñalada: lo suelta
+        continue;
+      }
       if (e.state === ST.DEAD) {
         e.deadT += dt;
         p.death = Math.min(1, e.deadT / 0.75); p.walk = damp(p.walk, 0, 10, dt); p.aim = damp(p.aim, 0, 6, dt);

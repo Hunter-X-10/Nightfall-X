@@ -48,6 +48,7 @@ export class HUD {
     this.el = {
       hud: $('hud'), cross: $('crosshair'), hit: $('hitmarker'), dmgDir: $('dmg-dir'), vignette: $('damage-vignette'),
       mag: $('ammo-mag'), res: $('ammo-res'), pips: $('ammo-pips'), hp: $('health-num'), hpFill: $('health-fill'), health: $('health'),
+      sta: $('stamina'), staFill: $('stamina-fill'), quick: $('quick-hint'),
       obj: $('objective'), objText: $('objective-text'), objSub: $('objective-sub'), strip: $('compass-strip'), cObj: $('compass-obj'),
       marker: $('obj-marker'), dist: $('obj-dist'), msg: $('center-msg'), kill: $('kill-msg'), fps: $('fps-counter'),
       wname: $('weapon-name'), ammo: $('ammo'), toolbar: $('toolbar'),
@@ -182,6 +183,12 @@ export class HUD {
       e.hpFill.style.width = `${v}%`;
       e.health.classList.toggle('low', v <= 35);
     });
+    this.set('sta', Math.round(player.stamina * 100), (v) => {
+      e.staFill.style.width = `${v}%`;
+      e.sta.classList.toggle('on', v < 100);
+    });
+    this.set('staOut', player.exhausted, (v) => e.sta.classList.toggle('out', v));
+    this.set('quick', !!weapon.quickTarget, (v) => e.quick.classList.toggle('on', v));
 
     // Marcadores temporales.
     this.hitT = Math.max(0, this.hitT - dt);

@@ -125,7 +125,7 @@ export function createRooms({ fixedCode = '' } = {}) {
         const v = room.players.get(m.to);
         if (!v || v === c || !v.playing || v.dead) return;
         if (v.team === c.team && !room.settings.ff) return;
-        send(v, { t: 'hit', by: c.id, dmg: Math.min(200, Math.max(0, m.dmg)), part: m.part === 1 || m.part === 2 ? m.part : 0, w: weaponId(m.w) });
+        send(v, { t: 'hit', by: c.id, dmg: Math.min(200, Math.max(0, m.dmg)), part: m.part === 1 || m.part === 2 ? m.part : 0, w: weaponId(m.w), k: m.k === 1 ? 1 : 0 });
         break;
       }
       case 'died': { // la víctima avisa de su muerte y de quién la causó (0 = nadie: caída, explosión propia…)

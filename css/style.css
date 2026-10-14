@@ -117,6 +117,13 @@ body.cine .letterbox { height: 11vh; }
   position: absolute; left: 50%; top: 56%; transform: translateX(-50%); font-size: 12px; letter-spacing: 3px;
   color: var(--danger); opacity: 0; white-space: nowrap;
 }
+/* Golpe rápido disponible: hay un rival al alcance, de lado o de espaldas. */
+#quick-hint {
+  position: absolute; left: 50%; top: 67%; transform: translateX(-50%); font-size: 11px; letter-spacing: 3px;
+  color: var(--hud); opacity: 0; transition: opacity .12s; white-space: nowrap; text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+#quick-hint b { display: inline-block; border: 1px solid var(--hud-dim); border-radius: 3px; padding: 1px 6px; margin-right: 8px; letter-spacing: 0; }
+#quick-hint.on { opacity: 1; }
 
 #health { position: absolute; left: 30px; bottom: 30px; width: 170px; }
 .h-row { display: flex; align-items: baseline; gap: 8px; }
@@ -126,6 +133,12 @@ body.cine .letterbox { height: 11vh; }
 #health-fill { height: 100%; width: 100%; background: var(--hud); transition: width .2s, background .3s; }
 #health.low #health-fill { background: var(--danger); }
 #health.low #health-num { color: var(--danger); }
+/* Resistencia: sólo se ve cuando no está llena; en ámbar si se ha agotado. */
+#stamina { height: 3px; background: rgba(255, 255, 255, 0.12); margin-top: 4px; opacity: 0; transition: opacity .4s, background .3s; }
+#stamina.on { opacity: 1; }
+#stamina-fill { height: 100%; width: 100%; background: rgba(232, 240, 245, 0.7); }
+#stamina.out { background: rgba(255, 179, 71, 0.28); }
+#stamina.out #stamina-fill { background: var(--accent); }
 
 #ammo { position: absolute; right: 30px; bottom: 30px; text-align: right; }
 #weapon-name { font-size: 10px; letter-spacing: 3px; color: var(--hud-dim); }

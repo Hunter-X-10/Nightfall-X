@@ -17,6 +17,12 @@ const MELEE_PAD = 0.14; // holgura de las zonas de impacto en el cuerpo a cuerpo
 // ¿Está el atacante (vector a = atacante - víctima) a la espalda de alguien que mira hacia f?
 const behind = (fx, fz, ax, az) => (fx * ax + fz * az) / (Math.hypot(ax, az) || 1) < -0.3;
 const PVP_PART = [1, 2.2, 0.75]; // torso, cabeza, piernas (índices de PART)
+// Golpe rápido con V: alcance en planta, cono de la vista en el que tiene que estar el rival (coseno) y
+// cuánto de frente se le puede tener (coseno respecto a hacia dónde mira él: más es "de frente", no vale).
+const QUICK_REACH = 1.9;
+const QUICK_VIEW = 0.6;
+const QUICK_FRONT = 0.5;
+export const STAB_LEFT = 30; // vida con la que deja la puñalada rápida (si tenía menos, lo mata)
 
 export class Combat {
   constructor(g) {
@@ -129,6 +135,106 @@ export class Combat {
     }
     if (!this.mission) net.fire(o, { x, y, z }, struck ? 3 : 2);
     return struck;
+  }
+
+  // ---------- Golpe rápido con V ----------
+  // Objetivo: el rival más cercano al alcance, dentro de la vista, sin paredes entre medias y al que no se
+  // tenga de frente (hay que estar a su lado o a su espalda). Devuelve { e, r, x, y, z, fx, fz } (e: enemigo
+  // de la IA, r: jugador remoto; posición y hacia dónde mira) o null.
+  quickTarget() {
+    const { enemies, remotes, net, world, player } = this.g;
+    if (player.dead || player.lock) return null;
+    const px = player.pos.x; const pz = player.pos.z;
+    const vx = -Math.sin(player.yaw); const vz = -Math.cos(player.yaw);
+    let best = null; let bd = QUICK_REACH;
+    const consider = (e, r, x, y, z, fx, fz) => {
+      const dx = x - px; const dz = z - pz;
+      const d = Math.hypot(dx, dz);
+      if (d >= bd || d < 0.05 || Math.abs(y - player.pos.y) > 0.7) return;
+      if ((dx * vx + dz * vz) / d < QUICK_VIEW) return;
+      if ((-dx * fx - dz * fz) / d > QUICK_FRONT) return;
+      if (!world.col.lineOfSight(px, player.eyeY, pz, x, y + 1.2, z)) return;
+      bd = d; best = { e, r, x, y, z, fx, fz };
+    };
+    if (this.mission) {
+      if (!enemies.active) return null;
+      for (const e of enemies.list) if (e.state !== ST.DEAD && e.td < 0) consider(e, null, e.x, 0, e.z, Math.sin(e.yaw), Math.cos(e.yaw));
+    } else {
+      const skip = net.room.settings.ff ? -1 : net.me.team;
+      for (const r of remotes.map.values()) {
+        if (!r.placed || r.team === skip || remotes.isDown(r) || remotes.isImmune(r) || r.td >= 0) continue;
+        consider(null, r, r.x, r.y, r.z, -Math.sin(r.yaw), -Math.cos(r.yaw));
+      }
+    }
+    return best;
+  }
+
+  // ¿Sigue siendo válido el objetivo `t` (vivo y a mano)? Actualiza su posición.
+  quickAlive(t, reach) {
+    const { remotes, player } = this.g;
+    if (t.e) {
+      if (t.e.state === ST.DEAD || t.e.td >= 0) return false;
+      t.x = t.e.x; t.z = t.e.z;
+    } else {
+      const r = t.r;
+      if (remotes.get(r.id) !== r || remotes.isDown(r) || remotes.isImmune(r) || r.td >= 0) return false;
+      t.x = r.x; t.y = r.y; t.z = r.z;
+    }
+    return Math.hypot(t.x - player.pos.x, t.z - player.pos.z) < reach;
+  }
+
+  // Sangre y sonido de la cuchillada en (x, y, z), viniendo desde el jugador.
+  stabFx(x, y, z) {
+    const { fx, audio, player } = this.g;
+    const dx = x - player.pos.x; const dz = z - player.pos.z; const d = Math.hypot(dx, dz) || 1;
+    impact(fx, 'flesh', x, y, z, -dx / d, 0.3, -dz / d);
+    audio.impact('flesh', x, y, z);
+    audio.stab();
+  }
+
+  // Puñalada rápida: deja al rival con STAB_LEFT de vida (o lo mata si ya tenía menos). Devuelve si alcanza.
+  quickStab(t) {
+    const { enemies, remotes, net, hud, audio, player } = this.g;
+    if (!this.quickAlive(t, QUICK_REACH + 0.6)) return false;
+    const dx = t.x - player.pos.x; const dz = t.z - player.pos.z; const d = Math.hypot(dx, dz) || 1;
+    const x = t.x - (dx / d) * 0.2; const y = t.y + 1.2; const z = t.z - (dz / d) * 0.2;
+    this.hits++;
+    if (t.e) {
+      const killed = enemies.damage(t.e, 'torso', t.e.hp > STAB_LEFT ? t.e.hp - STAB_LEFT : LETHAL, dx / d, dz / d);
+      const kind = killed ? 'kill' : 'hit';
+      hud.hitmarker(kind); audio.hitmarker(kind);
+    } else {
+      // La vida de la víctima sólo la conoce ella: el aviso k = 1 le dice que se quede con STAB_LEFT.
+      remotes.flinch(t.r);
+      hud.hitmarker('hit'); audio.hitmarker('hit');
+      net.hit(t.r.id, 0, PART.TORSO, KNIFE, 1);
+      net.fire({ x: player.pos.x, y: player.eyeY, z: player.pos.z }, { x, y, z }, 3);
+    }
+    this.stabFx(x, y, z);
+    return true;
+  }
+
+  // Remate por la espalda: la víctima se queda quieta haciendo su animación. En línea muere ya (si se esperase
+  // a la puñalada, con el retraso de la red podría escaparse); en la misión, con la puñalada (takedownStab).
+  takedownStart(t) {
+    const { enemies, remotes, net } = this.g;
+    if (t.e) { enemies.grab(t.e); return; }
+    net.hit(t.r.id, LETHAL, PART.TORSO, KNIFE);
+    remotes.takedown(t.r);
+  }
+
+  // Puñalada en el cuello del remate: mortal.
+  takedownStab(t) {
+    const { enemies, net, hud, audio, player } = this.g;
+    // El cuello, algo por detrás del centro del cuerpo (del lado del atacante).
+    const x = (t.e ? t.e.x : t.r.tdX) - t.fx * 0.14;
+    const y = (t.e ? 0 : t.r.tdY) + 1.45;
+    const z = (t.e ? t.e.z : t.r.tdZ) - t.fz * 0.14;
+    if (t.e) {
+      if (enemies.damage(t.e, 'torso', LETHAL, t.fx, t.fz)) { hud.hitmarker('kill'); audio.hitmarker('kill'); }
+    } else net.fire({ x: player.pos.x, y: player.eyeY, z: player.pos.z }, { x, y, z }, 3);
+    this.hits++;
+    this.stabFx(x, y, z);
   }
 
   // Disparo de otro jugador: [ox, oy, oz, ex, ey, ez, tipo]. Se dibuja saliendo de su arma y se

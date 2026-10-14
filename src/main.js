@@ -15,7 +15,7 @@ import { Player } from './player.js';
 import { Weapon, LIGHT_POWER } from './weapon.js';
 import { Enemies } from './enemies.js';
 import { HUD, renderBoard } from './hud.js';
-import { Combat } from './combat.js';
+import { Combat, STAB_LEFT } from './combat.js';
 import { Net, TEAMS, FLAG, WEAPON_SHIFT, LEAN_SHIFT } from './net.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Lobby } from './lobby.js';
@@ -136,6 +136,7 @@ async function boot() {
   const player = (g.player = new Player(camera, world.col, {
     step: (surface, loud) => { audio.step(surface, loud); if (surface === 'water') combat.footSplash(player.pos.x, player.pos.z); },
     land: (v) => audio.land(v),
+    exhausted: () => audio.cough(),
     hurt: () => { audio.hurt(); hud.damageFrom(player.hurtDir); hurtFlash = 1; },
     death: () => {
       if (mode !== 'online') { endTimer = 2.4; return; }
@@ -362,10 +363,12 @@ async function boot() {
     fire: (id, d) => { if (mode === 'online' && !matchEnd) combat.remoteShot(id, d); },
     barrel: (i, by) => { if (mode === 'online') combat.remoteBarrel(i, by); },
     // Otro jugador nos ha alcanzado: el daño se aplica aquí y, si es mortal, se avisa al servidor.
+    // k = 1 es la puñalada rápida: deja la vida en STAB_LEFT, o mata si ya había menos.
     hit: (m) => {
       if (mode !== 'online' || matchEnd) return;
       const r = remotes.get(m.by);
-      combat.hurtPlayer(m.dmg, r ? r.x : player.pos.x, r ? r.z : player.pos.z, m.by, m.part, m.w);
+      const dmg = m.k === 1 ? (player.health > STAB_LEFT ? player.health - STAB_LEFT : 200) : m.dmg;
+      combat.hurtPlayer(dmg, r ? r.x : player.pos.x, r ? r.z : player.pos.z, m.by, m.part, m.w);
     },
     // Baja confirmada por el servidor.
     kill: (m) => {
@@ -523,7 +526,7 @@ async function boot() {
           if (sendT >= SEND_INTERVAL) {
             sendT = 0;
             const flags = (player.crouching ? FLAG.CROUCH : 0) | (player.sprinting ? FLAG.SPRINT : 0) | (weapon.aiming ? FLAG.AIM : 0)
-              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (weapon.cur << WEAPON_SHIFT)
+              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (player.lock ? FLAG.LOCK : 0) | (weapon.cur << WEAPON_SHIFT)
               | ((player.lean < -0.12 ? 1 : player.lean > 0.12 ? 2 : 0) << LEAN_SHIFT);
             net.sendState(player.pos.x, player.pos.y, player.pos.z, player.yaw, player.pitch, flags);
           }
