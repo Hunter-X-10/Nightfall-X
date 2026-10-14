@@ -1,6 +1,6 @@
 # NIGHTFALL — notas para Claude
 
-Shooter en primera persona para el navegador hecho con Three.js. Tiene una misión en solitario contra IA y partidas en línea por equipos (ALFA contra BRAVO). Está publicado en https://nightfall-x.pages.dev y el repositorio es https://github.com/alexlmdmca-creator/nightfall (licencia MIT, autor "Alexus").
+Shooter en primera persona para el navegador hecho con Three.js. Tiene una misión en solitario contra IA y partidas en línea por equipos (ALFA contra BRAVO). Está publicado en https://nightfall-x.pages.dev y el repositorio es https://github.com/Hunter-X-10/Nightfall-X (licencia MIT, autor "Alexus"). El nombre "Nightfall-X" sirve para distinguirlo de otros proyectos llamados Nightfall; antes estaba en `alexlmdmca-creator/nightfall`, que redirige al nuevo.
 
 El usuario escribe en español. Responde, comenta el código y escribe los mensajes de commit en español.
 
