@@ -8,7 +8,7 @@ El usuario escribe en español. Responde, comenta el código y escribe los mensa
 
 - **Todo es procedural.** No hay imágenes, modelos 3D ni sonidos en archivo: texturas, soldados, armas, mapas y audio se generan por código al arrancar. No añadas recursos externos sin preguntar.
 - **No hay paso de compilación para jugar.** `index.html` carga `src/main.js` con un importmap que apunta a `node_modules/`. No hay TypeScript, empaquetador ni framework.
-- **Commits solo a nombre del usuario**, sin `Co-Authored-By` ni menciones a Claude. No hagas commit ni push sin que lo pida: **cada push a `main` vuelve a publicar en Cloudflare Pages**.
+- **Commits a nombre del usuario, con Claude como coautor.** Termina cada mensaje de commit con la línea `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (el usuario lo pidió el 14 de octubre de 2026 para que Claude figure como contribuidor). Los commits hasta `32bc318` incluido no la llevan y no se reescriben. No hagas commit ni push sin que lo pida: **cada push a `main` vuelve a publicar en Cloudflare Pages**.
 - **"No romper nada"** es un requisito habitual. Antes de dar algo por terminado, pasa las pruebas de la sección de verificación.
 
 ## Ejecutar
@@ -150,7 +150,8 @@ Parámetros útiles en la URL:
     - Línea de estado con punto rojo, logo con "-X" en ámbar y entradas numeradas con descripción, con barra y brillo ámbar al pasar el ratón.
     - Controles como teclas, agrupados abajo (se añadió la V), y esquinas de visor.
     - Estilos en la sección "Menú principal" de `css/style.css`. El texto "JUGAR MISIÓN" ya no cambia al cargar: `main.js` rellena `.mi-desc`.
-  - Commits: `933e8b6` (supervivencia, nombre y menú) y el de esta documentación.
+  - Commits: `933e8b6` (supervivencia, nombre y menú) y `32bc318` (esta documentación).
+  - A petición del usuario, Claude pasa a figurar como coautor de los commits (ver Reglas del proyecto).
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
