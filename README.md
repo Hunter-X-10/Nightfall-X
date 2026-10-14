@@ -6,13 +6,13 @@
 </p>
 
 <p align="center">
-  <a href="https://nightfall-x.netlify.app"><img src="https://img.shields.io/badge/%E2%96%B6%20JUGAR%20AHORA-nightfall--x.netlify.app-e8452c?style=for-the-badge" alt="Jugar ahora"></a>
+  <a href="https://nightfall-x.pages.dev"><img src="https://img.shields.io/badge/%E2%96%B6%20JUGAR%20AHORA-nightfall--x.pages.dev-e8452c?style=for-the-badge" alt="Jugar ahora"></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Three.js-WebGL-000000?logo=threedotjs&logoColor=white" alt="Three.js">
   <img src="https://img.shields.io/badge/online-de%20navegador%20a%20navegador-6fb6ff" alt="Online de navegador a navegador">
-  <img src="https://img.shields.io/badge/alojado%20en-Netlify-00C7B7?logo=netlify&logoColor=white" alt="Alojado en Netlify">
+  <img src="https://img.shields.io/badge/alojado%20en-Cloudflare%20Pages-F38020?logo=cloudflarepages&logoColor=white" alt="Alojado en Cloudflare Pages">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-MIT-green" alt="Licencia MIT"></a>
 </p>
 
@@ -31,7 +31,7 @@
 
 ## 🚀 Jugar
 
-El juego está publicado en **[nightfall-x.netlify.app](https://nightfall-x.netlify.app)**. Ábrelo en un ordenador con ratón y teclado, pulsa **Jugar misión** o **Multijugador**, y a jugar.
+El juego está publicado en **[nightfall-x.pages.dev](https://nightfall-x.pages.dev)**. Ábrelo en un ordenador con ratón y teclado, pulsa **Jugar misión** o **Multijugador**, y a jugar.
 
 Va mejor con auriculares y a pantalla completa (**F11**).
 

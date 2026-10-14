@@ -1,6 +1,6 @@
 # NIGHTFALL — notas para Claude
 
-Shooter en primera persona para el navegador hecho con Three.js. Tiene una misión en solitario contra IA y partidas en línea por equipos (ALFA contra BRAVO). Está publicado en https://nightfall-x.netlify.app y el repositorio es https://github.com/alexlmdmca-creator/nightfall (licencia MIT, autor "Alexus").
+Shooter en primera persona para el navegador hecho con Three.js. Tiene una misión en solitario contra IA y partidas en línea por equipos (ALFA contra BRAVO). Está publicado en https://nightfall-x.pages.dev y el repositorio es https://github.com/alexlmdmca-creator/nightfall (licencia MIT, autor "Alexus").
 
 El usuario escribe en español. Responde, comenta el código y escribe los mensajes de commit en español.
 
@@ -8,14 +8,14 @@ El usuario escribe en español. Responde, comenta el código y escribe los mensa
 
 - **Todo es procedural.** No hay imágenes, modelos 3D ni sonidos en archivo: texturas, soldados, armas, mapas y audio se generan por código al arrancar. No añadas recursos externos sin preguntar.
 - **No hay paso de compilación para jugar.** `index.html` carga `src/main.js` con un importmap que apunta a `node_modules/`. No hay TypeScript, empaquetador ni framework.
-- **Commits solo a nombre del usuario**, sin `Co-Authored-By` ni menciones a Claude. No hagas commit ni push sin que lo pida: **cada push a `main` vuelve a publicar en Netlify**.
+- **Commits solo a nombre del usuario**, sin `Co-Authored-By` ni menciones a Claude. No hagas commit ni push sin que lo pida: **cada push a `main` vuelve a publicar en Cloudflare Pages**.
 - **"No romper nada"** es un requisito habitual. Antes de dar algo por terminado, pasa las pruebas de la sección de verificación.
 
 ## Ejecutar
 
 ```bash
 npm start              # servidor local con salas por WebSocket (server.js)
-npm run build          # genera dist/ para Netlify/Vercel (modo online de navegador a navegador)
+npm run build          # genera dist/ para Cloudflare Pages/Netlify/Vercel (modo online de navegador a navegador)
 npm run test:online    # prueba automática del modo en línea, ~100 s
 npm run test:p2p       # igual, pero con PeerJS entre 3 navegadores (necesita internet)
 ```
