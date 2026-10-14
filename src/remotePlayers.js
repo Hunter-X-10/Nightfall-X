@@ -2,9 +2,9 @@
 // las instantáneas que reparte el servidor, con cápsulas de impacto para los disparos y el nombre sobre la
 // cabeza: el de los compañeros se ve siempre; el de los rivales, sólo mientras se les apunta.
 import * as THREE from 'three';
-import { createSoldier, poseSoldier, soldierGeometry } from './enemyModel.js';
+import { createSoldier, poseSoldier, soldierGeometry, LEAN_HIP, LEAN_SPINE } from './enemyModel.js';
 import { coneGeometry, coneMaterial, flare } from './volumetric.js';
-import { FLAG, PART, TEAM_COLORS, WEAPON_SHIFT } from './net.js';
+import { FLAG, LEAN_SHIFT, PART, TEAM_COLORS, WEAPON_SHIFT } from './net.js';
 import { angleDelta, clamp, damp, lerp, rand, rayCapsule } from './utils.js';
 
 const INTERP_MS = 120; // se dibuja algo en el pasado para tener siempre dos muestras entre las que interpolar
@@ -136,14 +136,21 @@ export class RemotePlayers {
     for (const r of this.map.values()) {
       if (!r.placed || r.team === skipTeam || this.isDown(r) || (!shielded && r.flags & FLAG.SHIELD)) continue;
       const cr = r.pose.crouch;
-      const hipY = r.y + 0.95 - cr * 0.4; const shY = hipY + 0.5; const headY = shY + 0.2;
+      const hipY = r.y + 0.95 - cr * 0.4; const shY = hipY + 0.5;
       const lean = cr * 0.12;
       const fx = -Math.sin(r.yaw) * lean; const fz = -Math.cos(r.yaw) * lean; // hacia donde mira
-      let t = rayCapsule(ox, oy, oz, dx, dy, dz, r.x + fx, headY, r.z + fz, r.x + fx, headY + 0.03, r.z + fz, 0.135 + pad, bt);
+      // Asomarse: todo el cuerpo se aparta con la cadera y el torso gira sobre la columna (ver poseSoldier);
+      // la cabeza está a 0,57 m del pivote y el hombro a 0,29 m.
+      const ln = r.pose.lean; const ang = ln * LEAN_SPINE;
+      const rx = Math.cos(r.yaw); const rz = -Math.sin(r.yaw); // derecha del jugador
+      const hip = ln * LEAN_HIP; const sh = hip + 0.29 * Math.sin(ang); const hd = hip + 0.57 * Math.sin(ang);
+      const headY = shY + 0.2 - 0.57 * (1 - Math.cos(ang));
+      const bx = r.x + rx * hip; const bz = r.z + rz * hip;
+      let t = rayCapsule(ox, oy, oz, dx, dy, dz, r.x + fx + rx * hd, headY, r.z + fz + rz * hd, r.x + fx + rx * hd, headY + 0.03, r.z + fz + rz * hd, 0.135 + pad, bt);
       if (t >= 0 && t < bt) { bt = t; best = { player: r, part: PART.HEAD, dist: t }; }
-      t = rayCapsule(ox, oy, oz, dx, dy, dz, r.x, hipY + 0.12, r.z, r.x + fx, shY - 0.08, r.z + fz, 0.23 + pad, bt);
+      t = rayCapsule(ox, oy, oz, dx, dy, dz, bx, hipY + 0.12, bz, r.x + fx + rx * sh, shY - 0.08, r.z + fz + rz * sh, 0.23 + pad, bt);
       if (t >= 0 && t < bt) { bt = t; best = { player: r, part: PART.TORSO, dist: t }; }
-      t = rayCapsule(ox, oy, oz, dx, dy, dz, r.x, r.y + 0.12, r.z, r.x, hipY, r.z, 0.19 + pad, bt);
+      t = rayCapsule(ox, oy, oz, dx, dy, dz, bx, r.y + 0.12, bz, bx, hipY, bz, 0.19 + pad, bt);
       if (t >= 0 && t < bt) { bt = t; best = { player: r, part: PART.LEGS, dist: t }; }
     }
     return best;
@@ -205,6 +212,8 @@ export class RemotePlayers {
       p.walk = damp(p.walk, moving ? Math.min(1, r.speed / 2.4) : 0, 9, dt);
       if (moving) p.phase += dt * (3.2 + r.speed * 1.5);
       p.crouch = damp(p.crouch, flags & FLAG.CROUCH ? 1 : 0, 9, dt);
+      const leanBits = (flags >> LEAN_SHIFT) & 3;
+      p.lean = damp(p.lean, dead ? 0 : leanBits === 1 ? -1 : leanBits === 2 ? 1 : 0, 10, dt);
       p.aim = damp(p.aim, flags & FLAG.SPRINT || dead ? 0 : 1, 8, dt);
       p.aimPitch = r.pitch;
       p.flinchX = damp(p.flinchX, 0, 7, dt); p.flinchY = damp(p.flinchY, 0, 7, dt);
@@ -240,6 +249,7 @@ export class RemotePlayers {
       tag.material.opacity = r.tagA;
       // Sobre la cabeza y con tamaño aparente mínimo para que se lea de lejos.
       tag.position.y = 2.02 - p.crouch * 0.42;
+      tag.position.x = -p.lean * 0.38; // sigue a la cabeza al asomarse (el modelo mira a +Z: su derecha es -X)
       const d = Math.hypot(camera.position.x - x, camera.position.y - (y + 1.9), camera.position.z - z);
       const s = TAG_H * Math.max(1, d / 11);
       tag.scale.set(s * (512 / 96), s, 1);

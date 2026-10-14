@@ -9,6 +9,7 @@ export const TEAM_COLORS = ['#6fb6ff', '#ff7a5c'];
 // Bits de estado que acompañan a la posición de cada jugador. DEAD lo fija el servidor.
 export const FLAG = { CROUCH: 1, SPRINT: 2, AIM: 4, LIGHT: 8, DEAD: 16, SHIELD: 32 };
 export const WEAPON_SHIFT = 6; // los bits 6 y 7 llevan el arma en mano (índice de WEAPONS)
+export const LEAN_SHIFT = 8; // los bits 8 y 9, hacia dónde se asoma: 0 nada, 1 izquierda, 2 derecha
 // Zona del cuerpo alcanzada por un disparo.
 export const PART = { TORSO: 0, HEAD: 1, LEGS: 2 };
 

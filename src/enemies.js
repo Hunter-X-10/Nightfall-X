@@ -157,6 +157,7 @@ export class Enemies {
   update(dt, player, game) {
     if (!this.active) return;
     const px = player.pos.x; const pz = player.pos.z; const pEye = player.eyeY;
+    const hx = player.headX; const hz = player.headZ; // la cabeza se desplaza al asomarse a cubierto
     let combat = 0;
     for (const e of this.list) {
       const p = e.pose;
@@ -175,7 +176,7 @@ export class Enemies {
       e.think -= dt;
       if (e.think <= 0) {
         e.think = 0.12;
-        e.canSee = !player.dead && e.dist < 75 && this.col.lineOfSight(e.x, eyeY, e.z, px, pEye - 0.15, pz);
+        e.canSee = !player.dead && e.dist < 75 && this.col.lineOfSight(e.x, eyeY, e.z, hx, pEye - 0.15, hz);
         if (e.state !== ST.COMBAT) {
           const facing = (Math.sin(e.yaw) * dx + Math.cos(e.yaw) * dz) / (e.dist || 1);
           const range = (player.crouching ? 19 : 29) + (game.flashlight ? 9 : 0) + (e.state === ST.ALERT ? 10 : 0);
@@ -276,7 +277,9 @@ export class Enemies {
     e.s.mesh.updateMatrixWorld(true);
     g.localToWorld(_v.set(0, 0.045, 0.7));
     const mx = _v.x; const my = _v.y; const mz = _v.z;
-    const tx = player.pos.x; const ty = player.eyeY - 0.32; const tz = player.pos.z;
+    // A cubierto sólo asoma la cabeza: se apunta a ella (que se desplaza al asomarse por un lado).
+    const tx = player.headX; const tz = player.headZ;
+    const ty = player.eyeY - (player.inCover ? 0.12 : 0.32);
     let dx = tx - mx; let dy = ty - my; let dz = tz - mz;
     const dist = Math.hypot(dx, dy, dz) || 1;
     dx /= dist; dy /= dist; dz /= dist;
@@ -294,7 +297,8 @@ export class Enemies {
 
     const w = this.col.raycast(mx, my, mz, dx, dy, dz, 140, 'bullets', _hit, true);
     const wd = w ? w.dist : 140;
-    const pt = rayCapsule(mx, my, mz, dx, dy, dz, tx, player.pos.y + 0.25, tz, tx, player.eyeY, tz, 0.34, wd);
+    // Cuerpo del jugador: de los pies a la cabeza, inclinado si se asoma.
+    const pt = rayCapsule(mx, my, mz, dx, dy, dz, player.pos.x, player.pos.y + 0.25, player.pos.z, tx, player.eyeY, tz, 0.34, wd);
     let ex; let ey; let ez;
     if (pt >= 0) {
       ex = mx + dx * pt; ey = my + dy * pt; ez = mz + dz * pt;

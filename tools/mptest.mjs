@@ -198,6 +198,20 @@ try {
   const fpsA = (await A.evaluate('__game.stats()')).fps;
   check('rendimiento con jugadores remotos', fpsA >= 50, `${fpsA} FPS`);
 
+  // Cobertura: el invitado pulsa agacharse junto a una caja baja y se asoma con E; el anfitrión lo ve inclinado.
+  await B.evaluate('__game.input.crouchToggle = false; __game.teleport(-9.5, 30.75, 90, 0)');
+  await sleep(300);
+  await B.evaluate('__game.input.crouchToggle = true');
+  await sleep(300);
+  await B.evaluate("__game.input.keys.add('KeyE')");
+  await sleep(900);
+  const cov = await B.evaluate('({ inCover: __game.player.inCover, lean: __game.player.lean })');
+  check('agacharse junto a una caja pone a cubierto y deja asomarse', cov.inCover && cov.lean > 0.3, JSON.stringify(cov));
+  const leanSeen = await A.evaluate("[...__game.remotes.map.values()].find((r) => r.name === 'Marta').pose.lean");
+  check('asomarse se sincroniza', leanSeen > 0.8, leanSeen.toFixed(2));
+  await B.evaluate("__game.input.keys.delete('KeyE'); __game.teleport(3.2, 5.5, 147, 0)");
+  await sleep(700);
+
   // ------------------------------------------------------------------
   section('Nombres');
   const tags = () => A.evaluate('Object.fromEntries([...__game.remotes.map.values()].map((r) => [r.name, Math.round(r.tagA * 100) / 100]))');

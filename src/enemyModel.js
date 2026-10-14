@@ -15,6 +15,10 @@ const BONES = [
   ['gun', 2, 0, 1.08, 0],
 ];
 const B = Object.fromEntries(BONES.map((b, i) => [b[0], i]));
+// Asomarse: desplazamiento lateral de la cadera (m) y giro del torso (rad) con lean = ±1. Con la cabeza a
+// 0,57 m del pivote de la columna, la cabeza se aparta 0,38 m (LEAN_DIST de player.js).
+export const LEAN_HIP = 0.15;
+export const LEAN_SPINE = 0.42;
 export const ARM_UP = 0.29;
 export const ARM_FORE = 0.3;
 
@@ -337,8 +341,11 @@ export function poseSoldier(s, p) {
   b.thighL.rotation.z = cr * 0.12; b.thighR.rotation.z = -cr * 0.12;
   b.pelvis.position.y = 0.95 - cr * 0.4 + Math.abs(Math.cos(p.phase)) * 0.035 * walk;
   b.pelvis.rotation.y = sw * 0.09 * walk;
+  // Asomarse (lean -1 izquierda, 1 derecha): la cadera se aparta y el torso se inclina hacia ese lado.
+  // El modelo mira a +Z, así que su derecha es -X. Las cápsulas de impacto usan LEAN_HIP y LEAN_SPINE.
+  b.pelvis.position.x = -p.lean * LEAN_HIP;
   // Torso: inclinación al correr, apuntado vertical y sacudida por impacto.
-  b.spine.rotation.set(0.1 * walk + cr * 0.28 - p.aimPitch * p.aim * 0.75 + p.flinchX, -sw * 0.11 * walk + p.flinchY + p.aim * -0.22, p.lean * 0.3);
+  b.spine.rotation.set(0.1 * walk + cr * 0.28 - p.aimPitch * p.aim * 0.75 + p.flinchX, -sw * 0.11 * walk + p.flinchY + p.aim * -0.22, p.lean * LEAN_SPINE);
   b.head.rotation.set(-cr * 0.2 - p.aimPitch * p.aim * 0.2 - 0.1 * walk, p.aim * 0.2 + (1 - p.aim) * Math.sin(p.look) * 0.5, 0);
 
   const a = p.aim;

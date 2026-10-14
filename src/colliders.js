@@ -132,6 +132,44 @@ export class CollisionWorld {
     return false;
   }
 
+  // Cobertura junto a un jugador en (x, z) con pies en feetY: el obstáculo sólido más cercano a menos de
+  // `reach` metros del borde del círculo que tape al menos hasta la cadera (agachado) y que no sea un
+  // poste (cilindros de 0,2 m de radio o más, cajas de 0,6 m o más en su lado largo). Devuelve
+  // { nx, nz, h, dist } (normal del obstáculo hacia el jugador, altura de la tapa sobre los pies) o null.
+  coverInfo(x, z, radius, feetY, reach = 0.35, out = {}) {
+    let best = radius + reach;
+    let found = false;
+    for (let i = 0; i < this.list.length; i++) {
+      const c = this.list[i];
+      if (!c.solid || !c.bullets || c.y1 < feetY + 0.8 || c.y0 > feetY + 0.5) continue;
+      if (c.type === 'cyl' ? c.r < 0.2 : Math.max(c.hx, c.hz) < 0.3) continue;
+      const dx = x - c.x;
+      const dz = z - c.z;
+      const lim = c.rad + best;
+      if (dx * dx + dz * dz > lim * lim) continue;
+      let d; let nx; let nz;
+      if (c.type === 'cyl') {
+        const l = Math.hypot(dx, dz);
+        if (l < EPS) continue;
+        d = l - c.r; nx = dx / l; nz = dz / l;
+      } else {
+        // Punto más cercano de la caja, en su espacio local.
+        const lx = dx * c.cos - dz * c.sin;
+        const lz = dx * c.sin + dz * c.cos;
+        const px = lx - (lx < -c.hx ? -c.hx : lx > c.hx ? c.hx : lx);
+        const pz = lz - (lz < -c.hz ? -c.hz : lz > c.hz ? c.hz : lz);
+        d = Math.hypot(px, pz);
+        if (d < EPS) continue;
+        const ox = px / d; const oz = pz / d;
+        nx = ox * c.cos + oz * c.sin; nz = -ox * c.sin + oz * c.cos;
+      }
+      if (d >= best) continue;
+      best = d; found = true;
+      out.nx = nx; out.nz = nz; out.h = c.y1 - feetY; out.dist = d;
+    }
+    return found ? out : null;
+  }
+
   // Rayo contra el mundo. `mode`: 'bullets' | 'sight'. Devuelve el impacto más cercano o null.
   // out: { dist, x, y, z, nx, ny, nz, surface, collider }
   raycast(ox, oy, oz, dx, dy, dz, maxDist, mode = 'bullets', out = {}, ground = true) {

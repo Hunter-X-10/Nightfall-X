@@ -132,7 +132,6 @@ export class Weapon {
   reset() {
     for (const s of this.slots) { s.mag = s.def.mag || 0; s.reserve = s.def.reserve || 0; }
     const first = this.allowed.indexOf(true);
-    this.last = this.allowed.indexOf(true, first + 1) >= 0 ? this.allowed.indexOf(true, first + 1) : first; // arma anterior (tecla Q)
     this.pending = -1; // arma a la que se está cambiando
     this.drawT = 0; // 0 = arma arriba, 1 = bajada del todo (cambio de arma)
     this.reloading = false;
@@ -191,13 +190,12 @@ export class Weapon {
     if (this.sinceShot > 0.3) this.burst = 0;
     const dead = player.dead;
 
-    // --- Cambio de arma: teclas 1-3, rueda del ratón o Q (la anterior) ---
+    // --- Cambio de arma: teclas 1-3 o rueda del ratón (Q y E son para asomarse a cubierto) ---
     const wheel = input.consumeWheel();
     if (!dead) {
       const n = this.slots.length;
       let want = -1;
       for (let i = 0; i < n; i++) if (input.hit(`Digit${i + 1}`)) want = i;
-      if (input.hit('KeyQ')) want = this.last;
       if (wheel) {
         // Siguiente arma disponible en el sentido de la rueda.
         want = this.pending >= 0 ? this.pending : this.cur;
@@ -207,7 +205,7 @@ export class Weapon {
     }
     if (this.pending >= 0) {
       this.drawT += dt / SWAP_DOWN;
-      if (this.drawT >= 1) { this.drawT = 1; this.last = this.cur; this.show(this.pending); this.pending = -1; this.kick = 0; this.kickV = 0; }
+      if (this.drawT >= 1) { this.drawT = 1; this.show(this.pending); this.pending = -1; this.kick = 0; this.kickV = 0; }
     } else if (this.drawT > 0) this.drawT = Math.max(0, this.drawT - dt / SWAP_UP);
     const ready = this.pending < 0 && this.drawT < 0.35;
 

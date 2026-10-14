@@ -1,5 +1,5 @@
-// Controlador en primera persona: movimiento con inercia, sprint, agacharse, salto,
-// balanceo de cabeza, retroceso de cámara y salud con regeneración.
+// Controlador en primera persona: movimiento con inercia, sprint, agacharse, salto, cobertura (al agacharse
+// junto a un obstáculo) con asomarse a los lados, balanceo de cabeza, retroceso de cámara y salud con regeneración.
 import * as THREE from 'three';
 import { clamp, damp, lerp } from './utils.js';
 import { BASE, ROAD, SPAWN } from './layout.js';
@@ -8,7 +8,16 @@ const RADIUS = 0.38;
 const EYE_STAND = 1.68;
 const EYE_CROUCH = 1.02;
 const GRAVITY = 19;
+// Asomarse: desplazamiento lateral de la cabeza (el mismo que la pose de los soldados remotos, ver
+// poseSoldier y remotePlayers.raycast), bajada de la cámara por metro desplazado y giro de la vista.
+export const LEAN_DIST = 0.38;
+const LEAN_DROP = 0.13;
+const LEAN_ROLL = 0.17;
+const COVER_REACH = 0.35; // distancia máxima al obstáculo para ponerse a cubierto
+const COVER_LOW = 1.45; // una cobertura más baja deja asomarse por encima al apuntar
 const _mouse = { x: 0, y: 0 };
+const _cover = {};
+const _ray = {};
 
 export class Player {
   constructor(camera, col, events) {
@@ -54,6 +63,12 @@ export class Player {
     this.mouseDX = 0; this.mouseDY = 0; // para el balanceo del arma
     this.deathT = 0;
     this.hurtDir = 0;
+    this.inCover = false;
+    this.coverLow = false;
+    this.coverT = 0;
+    this.leanDir = 0; // -1 izquierda, 0 nada, 1 derecha (lo que se pide con Q/E)
+    this.lean = 0; // desplazamiento lateral real de la cabeza, en metros (+ derecha)
+    this.headX = this.pos.x; this.headZ = this.pos.z; // posición de la cabeza en planta (para la IA)
   }
 
   get eyeY() { return this.pos.y + this.eye; }
@@ -107,9 +122,15 @@ export class Player {
     if (len > 0) { fwd /= len; str /= len; }
     this.moving = len > 0;
 
-    // --- Agacharse (no se puede levantar bajo un obstáculo) ---
+    // --- Agacharse y cobertura ---
+    // Agachado junto a un obstáculo que tape al menos hasta la cadera se está a cubierto: al pulsar agacharse
+    // a su lado o al llegar a él (o a su esquina) ya agachado. Se sale al levantarse, al saltar o al alejarse.
     const wantCrouch = input.crouch;
-    if (wantCrouch) this.crouching = true;
+    if (!wantCrouch || !this.onGround) this.inCover = false;
+    else if ((this.coverT -= dt) <= 0) this.inCover = this.findCover();
+    // Tras una cobertura baja, apuntar asoma por encima: de pie mientras se apunta (no bajo un obstáculo).
+    const peekUp = this.inCover && this.coverLow && aiming;
+    if (wantCrouch && !peekUp) this.crouching = true;
     else if (this.crouching && !this.col.blockedAbove(this.pos.x, this.pos.z, RADIUS, this.pos.y + 1.3, this.pos.y + 1.8)) this.crouching = false;
 
     this.sprinting = canSprint && input.sprint && fwd > 0.5 && !this.crouching && !aiming && this.onGround;
@@ -185,6 +206,19 @@ export class Player {
     this.roll = damp(this.roll, -strafe * 0.028, 8, dt);
     this.shake = damp(this.shake, 0, 5.5, dt);
 
+    // --- Asomarse (Q/E), sólo a cubierto ---
+    this.leanDir = this.inCover ? (input.down('KeyE') ? 1 : 0) - (input.down('KeyQ') ? 1 : 0) : 0;
+    let leanTo = this.leanDir * LEAN_DIST;
+    if (leanTo !== 0) {
+      // Sin meter la cabeza en una pared: se recorta con un rayo lateral a la altura de los ojos.
+      const s = Math.sign(leanTo);
+      const hit = this.col.raycast(this.pos.x, this.pos.y + this.eye, this.pos.z, cos * s, 0, -sin * s, LEAN_DIST + 0.2, 'solid', _ray, false);
+      if (hit) leanTo = s * Math.max(0, hit.dist - 0.2);
+    }
+    this.lean = damp(this.lean, leanTo, 10, dt);
+    this.headX = this.pos.x + cos * this.lean;
+    this.headZ = this.pos.z - sin * this.lean;
+
     const targetFov = this.baseFov + (this.sprinting ? 8 : 0) - this.aimT * this.aimZoom;
     this.fov = damp(this.fov, targetFov, 9, dt);
     this.applyCamera();
@@ -196,7 +230,18 @@ export class Player {
     this.roll = damp(this.roll, 0.9, 2.6, dt);
     this.pitch = damp(this.pitch, 0.25, 2, dt);
     this.shake = damp(this.shake, 0, 4, dt);
+    this.inCover = false; this.leanDir = 0;
+    this.lean = damp(this.lean, 0, 6, dt);
     this.applyCamera();
+  }
+
+  // ¿Hay un obstáculo para ponerse a cubierto? Anota si es bajo (se puede asomar por encima).
+  findCover() {
+    this.coverT = 0.1;
+    const c = this.col.coverInfo(this.pos.x, this.pos.z, RADIUS, this.pos.y, COVER_REACH, _cover);
+    if (!c) return false;
+    this.coverLow = c.h < COVER_LOW;
+    return true;
   }
 
   applyCamera() {
@@ -206,15 +251,17 @@ export class Player {
     const sh = this.shake * this.shake;
     const t = this.time * 43;
     const cos = Math.cos(this.yaw); const sin = Math.sin(this.yaw);
+    // Asomarse: la cabeza se desplaza de lado, baja un poco y la vista se inclina hacia ese lado.
+    const side = bobX + this.lean;
     cam.position.set(
-      this.pos.x + cos * bobX,
-      this.pos.y + this.eye + bobY - this.landDip,
-      this.pos.z - sin * bobX,
+      this.pos.x + cos * side,
+      this.pos.y + this.eye + bobY - this.landDip - Math.abs(this.lean) * LEAN_DROP,
+      this.pos.z - sin * side,
     );
     cam.rotation.set(
       this.pitch + this.punchP + Math.sin(t * 1.3) * sh * 0.03,
       this.yaw + this.punchY + Math.sin(t + 1.7) * sh * 0.03,
-      this.roll + Math.cos(this.bob) * 0.0035 * this.bobAmt + Math.sin(t * 0.9 + 0.4) * sh * 0.02,
+      this.roll - (this.lean / LEAN_DIST) * LEAN_ROLL + Math.cos(this.bob) * 0.0035 * this.bobAmt + Math.sin(t * 0.9 + 0.4) * sh * 0.02,
     );
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;

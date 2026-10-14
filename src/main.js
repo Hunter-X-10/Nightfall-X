@@ -16,7 +16,7 @@ import { Weapon, LIGHT_POWER } from './weapon.js';
 import { Enemies } from './enemies.js';
 import { HUD, renderBoard } from './hud.js';
 import { Combat } from './combat.js';
-import { Net, TEAMS, FLAG, WEAPON_SHIFT } from './net.js';
+import { Net, TEAMS, FLAG, WEAPON_SHIFT, LEAN_SHIFT } from './net.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Lobby } from './lobby.js';
 import { Armory } from './armory.js';
@@ -523,7 +523,8 @@ async function boot() {
           if (sendT >= SEND_INTERVAL) {
             sendT = 0;
             const flags = (player.crouching ? FLAG.CROUCH : 0) | (player.sprinting ? FLAG.SPRINT : 0) | (weapon.aiming ? FLAG.AIM : 0)
-              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (weapon.cur << WEAPON_SHIFT);
+              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (weapon.cur << WEAPON_SHIFT)
+              | ((player.lean < -0.12 ? 1 : player.lean > 0.12 ? 2 : 0) << LEAN_SHIFT);
             net.sendState(player.pos.x, player.pos.y, player.pos.z, player.yaw, player.pitch, flags);
           }
         }
