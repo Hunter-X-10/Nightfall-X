@@ -1,4 +1,4 @@
-<h1 align="center">NIGHTFALL</h1>
+<h1 align="center">NIGHTFALL-X</h1>
 
 <p align="center">
   <b>Shooter en primera persona para el navegador</b><br>
