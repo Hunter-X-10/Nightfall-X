@@ -6,8 +6,9 @@ import * as THREE from 'three';
 import { buildViewModel, buildPistolModel, buildKnifeModel, buildGrabHand, buildBandageModel, buildMedkitModel, paintParts, SIGHT_Y, PISTOL_SIGHT_Y, WRAP_LEN } from './viewmodel.js';
 import { TAKEDOWN_STAB, TAKEDOWN_TIME } from './enemyModel.js';
 import { ITEM, ITEM_MAX } from './loot.js';
-import { Charm, loadCharms } from './charms.js';
-import { SKIN_BOX, SKIN_TIME, bakeSkinSpace, loadSkins, loadSkinSet, skinWarmup } from './skins.js';
+import { Charm } from './charms.js';
+import { equipped, CHARM_SLOTS, SKIN_SLOTS } from './profile.js';
+import { SKIN_BOX, SKIN_TIME, bakeSkinSpace, loadSkinSet, skinWarmup } from './skins.js';
 import { FRAME } from './sprites.js';
 import { tracer } from './fxRecipes.js';
 import { clamp, damp, lerp, rand, smoothstep as ss } from './utils.js';
@@ -115,7 +116,7 @@ export class Weapon {
     this.allowed = WEAPONS.map((w) => w.heal === undefined); // armas disponibles (lo decide el ajuste de la partida)
     this.cur = RIFLE;
     this.charms = this.slots.map(() => null); // llavero de cada arma (null = ninguno)
-    loadCharms().forEach((id, i) => this.setCharm(i, id));
+    for (let i = 0; i < CHARM_SLOTS; i++) this.setCharm(i, equipped('charms', i));
     // Skins del fusil y la pistola: piezas pintables de cada una y juego de materiales puesto (null = de fábrica).
     this.paint = SKIN_BOX.map((_, i) => {
       const parts = paintParts(this.slots[i].vm);
@@ -124,7 +125,7 @@ export class Weapon {
     });
     this.skins = SKIN_BOX.map(() => null);
     this.skinLoad = SKIN_BOX.map(() => null); // skin pedida que aún se está pintando
-    loadSkins().forEach((id, i) => this.setSkin(i, id));
+    for (let i = 0; i < SKIN_SLOTS; i++) this.setSkin(i, equipped('skins', i));
     // Compila los shaders de las skins al cargar (ver skinWarmup); main.js lo quita a los pocos fotogramas.
     this.warm = skinWarmup(this.paint[0][0].base);
     camera.add(this.warm);

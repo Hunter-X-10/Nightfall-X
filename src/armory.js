@@ -1,14 +1,15 @@
 // Armería: pantalla del menú para elegir la skin y el llavero de cada arma. El arma elegida se expone en la
-// escena, a la derecha del panel (ver Weapon.showcase), y la elección se guarda en el navegador.
-import { CHARMS, loadCharms, saveCharms } from './charms.js';
-import { SKINS, SKIN_SLOTS, RARITY, loadSkins, saveSkins, skinById } from './skins.js';
+// escena, a la derecha del panel (ver Weapon.showcase), y la elección se guarda en el perfil (src/profile.js).
+import { CHARMS } from './charms.js';
+import { SKINS, RARITY, skinById } from './skins.js';
+import { SKIN_SLOTS, equip, equipped } from './profile.js';
 import { WEAPONS, ARMS } from './weapon.js';
 
 const $ = (id) => document.getElementById(id);
 
 const MODES = [
-  { id: 'skins', name: 'SKINS', tip: 'Acabado del arma en primera persona. Se guarda en este navegador.' },
-  { id: 'charms', name: 'LLAVEROS', tip: 'Cuelga de tu arma en primera persona y se guarda en este navegador.' },
+  { id: 'skins', name: 'SKINS', tip: 'Acabado del arma en primera persona. Se guarda en tu perfil, en este dispositivo.' },
+  { id: 'charms', name: 'LLAVEROS', tip: 'Cuelga de tu arma en primera persona. Se guarda en tu perfil, en este dispositivo.' },
 ];
 
 export class Armory {
@@ -18,8 +19,6 @@ export class Armory {
     this.open = false;
     this.mode = 'skins';
     this.slot = 0; // arma que se está viendo (índice de WEAPONS)
-    this.picks = loadCharms();
-    this.skins = loadSkins();
 
     this.modeTabs = MODES.map((m) => {
       const b = document.createElement('button');
@@ -77,16 +76,13 @@ export class Armory {
   }
 
   pick(id) {
-    this.picks[this.slot] = id;
-    saveCharms(this.picks);
+    if (!equip('charms', this.slot, id)) return;
     this.weapon.setCharm(this.slot, id);
     this.render();
   }
 
   pickSkin(id) {
-    if (this.slot >= SKIN_SLOTS || this.skins[this.slot] === id) return;
-    this.skins[this.slot] = id;
-    saveSkins(this.skins);
+    if (equipped('skins', this.slot) === id || !equip('skins', this.slot, id)) return;
     this.weapon.setSkin(this.slot, id);
     this.render();
   }
@@ -99,10 +95,10 @@ export class Armory {
     $('armory-grid').classList.toggle('hidden', skins);
     this.modeTabs.forEach((b, i) => b.classList.toggle('on', MODES[i].id === this.mode));
     this.tabs.forEach((b, i) => { b.classList.toggle('on', i === this.slot); b.disabled = skins && i >= SKIN_SLOTS; });
-    this.tiles.forEach((b, i) => b.classList.toggle('on', CHARMS[i].id === this.picks[this.slot]));
-    this.skinTiles.forEach((b, i) => b.classList.toggle('on', SKINS[i].id === this.skins[this.slot]));
+    this.tiles.forEach((b, i) => b.classList.toggle('on', CHARMS[i].id === equipped('charms', this.slot)));
+    this.skinTiles.forEach((b, i) => b.classList.toggle('on', SKINS[i].id === equipped('skins', this.slot)));
     if (skins) {
-      const s = skinById(this.skins[this.slot]);
+      const s = skinById(equipped('skins', this.slot));
       $('armory-tip').innerHTML = `<span style="color:${RARITY[s.rarity].color}">${s.name} · ${RARITY[s.rarity].name}</span><br>${mode.tip}`;
     } else $('armory-tip').textContent = mode.tip;
   }

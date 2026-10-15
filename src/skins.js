@@ -2,14 +2,11 @@
 // clásicos de los shooters (camuflajes militares, pavonado, temple, damasco, anodizados en degradado,
 // oro, diamante…) con nombres propios. Cada skin se pinta por píxel en tres lienzos (color; rugosidad y
 // metal; emisión) fuera del hilo principal y se proyecta en triplanar con la posición de cada pieza en el espacio del arma, así el
-// dibujo sigue de una pieza a otra sin depender de las UV. Se eligen en la armería y se guardan en el navegador.
+// dibujo sigue de una pieza a otra sin depender de las UV. Se eligen en la armería y se guardan en el perfil (src/profile.js).
 import * as THREE from 'three';
-import { SKINS, W, H, skinById, paintRows } from './skinPaint.js';
+import { W, H, skinById, paintRows } from './skinPaint.js';
 
 export { RARITY, SKINS, skinById } from './skinPaint.js';
-
-const STORE_KEY = 'nightfall.skins';
-export const SKIN_SLOTS = 2; // fusil y pistola
 
 // Tiempo compartido por las skins animadas (lo avanza Weapon).
 export const SKIN_TIME = { value: 0 };
@@ -19,17 +16,6 @@ export const SKIN_BOX = [
   [-0.12, -0.03, 0.96], // fusil: de la bocacha (-0,585) a la cantonera (0,348)
   [-0.04, -0.035, 0.32], // pistola
 ];
-
-// Skin guardada para cada arma (identificadores de SKINS).
-export function loadSkins() {
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { /* sin almacenamiento o dato roto */ }
-  return Array.from({ length: SKIN_SLOTS }, (_, i) => (Array.isArray(saved) && SKINS.some((s) => s.id === saved[i]) ? saved[i] : 'none'));
-}
-
-export function saveSkins(ids) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(ids)); } catch { /* sin almacenamiento */ }
-}
 
 // ---------- Texturas ----------
 // Se pintan en workers (src/skinWorker.js), cada uno una franja de filas, para no congelar el juego. Se

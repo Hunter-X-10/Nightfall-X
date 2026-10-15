@@ -1,5 +1,5 @@
 // Llaveros: colgantes procedurales que penden del arma en primera persona y se balancean con ella.
-// Se eligen en la armería (src/armory.js), uno por arma, y se guardan en el navegador.
+// Se eligen en la armería (src/armory.js), uno por arma, y se guardan en el perfil (src/profile.js).
 // Sólo los ve el propio jugador: no viajan por la red.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -17,20 +17,6 @@ export const CHARMS = [
   { id: 'duck', name: 'PATO DE GOMA' },
   { id: 'drum', name: 'BIDÓN' },
 ];
-
-const STORE_KEY = 'nightfall.charms';
-const SLOTS = 3; // fusil, pistola, cuchillo
-
-// Llavero guardado para cada arma (identificadores de CHARMS).
-export function loadCharms() {
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { /* sin almacenamiento o dato roto */ }
-  return Array.from({ length: SLOTS }, (_, i) => (Array.isArray(saved) && CHARMS.some((c) => c.id === saved[i]) ? saved[i] : 'none'));
-}
-
-export function saveCharms(ids) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(ids)); } catch { /* sin almacenamiento */ }
-}
 
 // ---------- Modelos ----------
 // Medidas reales en metros, en el espacio del arma. El origen es la anilla de la que cuelga; el cuerpo

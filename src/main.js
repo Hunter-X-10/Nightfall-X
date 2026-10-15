@@ -14,6 +14,7 @@ import { Input } from './input.js';
 import { Player } from './player.js';
 import { Weapon, LIGHT_POWER } from './weapon.js';
 import { setSkinRenderer } from './skins.js';
+import { profile } from './profile.js';
 import { Enemies } from './enemies.js';
 import { HUD, renderBoard } from './hud.js';
 import { Combat, STAB_LEFT } from './combat.js';
@@ -730,7 +731,7 @@ async function boot() {
   if (DEBUG) $('fps-counter').classList.remove('hidden');
 
   window.__game = {
-    ready: false, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, loot, useMap,
+    ready: false, profile, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, loot, useMap,
     get world() { return world; },
     get mode() { return mode; },
     start: startMission,

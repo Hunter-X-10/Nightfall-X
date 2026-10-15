@@ -77,7 +77,13 @@ Parámetros útiles en la URL:
   - En línea va en el bit 13, `FLAG.ITEM`; los bits del arma llevan `weapon.netWeapon` (la última arma). El soldado remoto baja el arma.
 - **Llaveros**: `src/charms.js` tiene el catálogo `CHARMS`, los modelos y un péndulo movido por la aceleración del arma en el mundo.
   - Se eligen en la armería (`src/armory.js`, botón ARMERÍA del menú). Ahí el arma se expone con `Weapon.showcase()`.
-  - Se guardan en `localStorage` (`nightfall.charms`) y solo los ve el propio jugador; no viajan por la red.
+  - Se guardan en el perfil (`src/profile.js`) y solo los ve el propio jugador; no viajan por la red.
+- **Perfil** (`src/profile.js`): todo el progreso cosmético en un solo registro de `localStorage`, `nightfall.profile`. Solo vive en este dispositivo: el usuario no quiso código de copia de seguridad.
+  - Guarda la versión (`v`), el nivel, la XP, las monedas, lo desbloqueado (`unlocked.skins` y `unlocked.charms`) y lo que lleva cada arma (`equip.skins`, 2 huecos, y `equip.charms`, 3).
+  - API: `profile` (también en `__game.profile`), `equipped(tipo, arma)`, `equip(tipo, arma, id)`, `isUnlocked`, `unlock` y `saveProfile`. La armería y `Weapon` leen y escriben solo por aquí.
+  - `sanitize` lo deja sano al cargar: si el JSON está roto, empieza de cero; quita los objetos que ya no existen y corrige los números raros. Si añades campos, súmalos ahí y en `fresh`, y sube `VERSION` si cambia el formato.
+  - La primera vez recoge las claves antiguas `nightfall.charms` y `nightfall.skins` y luego las borra. Los récords de supervivencia siguen aparte (`nightfall.survival`).
+  - `LOCKS = false`: mientras no haya forma de conseguir las cosas (fase 3), todo está desbloqueado. `none` siempre lo está.
 - **Skins** del fusil y la pistola (`src/skins.js`): 21 acabados procedurales en el catálogo `SKINS`, cada uno con su rareza (`RARITY`: común, rara, épica, legendaria y mítica, con los colores de los shooters).
   - Recrean acabados genéricos de CS2 y CoD con nombres propios: camuflajes, pavonado, fibra de carbono, telaraña, óxido, temple, damasco, anodizados, degradado, oro, diamante, nebulosa y lava. Por decisión de Claude, no se copian los diseños con autor (Asiimov, Dragon Lore…) ni sus nombres.
   - El catálogo y los pintores están en `src/skinPaint.js`, sin three.js; `skins.js` los vuelve a exportar. Cada skin es una función `paint(x, y, o)` que se pinta por píxel en tres búferes de 1024×512: color, rugosidad y metal (G y B) y emisión. Se pinta al elegirla y la comparten fusil y pistola. Las texturas se liberan cuando ya nadie las usa.
@@ -90,7 +96,7 @@ Parámetros útiles en la URL:
   - Se proyectan en triplanar (`skinMaterial`, `MeshPhysicalMaterial` con `onBeforeCompile`) con la posición de cada pieza en el espacio del arma: los atributos `skinPos`/`skinNrm` los hornea `bakeSkinSpace` en reposo, así el dibujo encaja entre la corredera, el cargador y el resto. `SKIN_BOX` dice qué parte del arma cubre el lienzo.
   - Pintan las piezas con `mat.black`, `mat.fde` y `mat.dark` (`paintParts` de `viewmodel.js`); `dark` va con el brillo `accent` de la skin. Las manos, el acero y las miras no cambian.
   - Por skin: `grain` (normal map de grano; en los metales pulidos casi nada, porque parecía arena), `env` (reflejos), `clearcoat`, `emit`, `scroll` y `pulse` (las míticas se animan con `SKIN_TIME`, que avanza `Weapon`).
-  - `weapon.setSkin(arma, id)` las pone. La armería tiene dos modos, SKINS y LLAVEROS; el cuchillo aún no tiene skins. Se guardan en `localStorage` (`nightfall.skins`) y por ahora no viajan por la red.
+  - `weapon.setSkin(arma, id)` las pone. La armería tiene dos modos, SKINS y LLAVEROS; el cuchillo aún no tiene skins. Se guardan en el perfil (`src/profile.js`) y por ahora no viajan por la red.
 - **Supervivencia** (botón SUPERVIVENCIA del menú, `src/survival.js`): oleadas sin fin en cualquiera de los 3 mapas. Es solo local, sin red. `mode` vale `'survival'` y `combat.survival` quita los objetivos de la misión.
   - Oleada n: `FIRST_WAVE + WAVE_STEP·(n−1)` enemigos (4, 7, 10…), como mucho `MAX_ALIVE` (8) a la vez; el resto entra de refuerzo. Cada oleada sube `combat.difficulty` (puntería) y baja `enemies.reactK` (reacción), con tope.
   - Al superar una oleada: bonus de puntos, vida al máximo, fusil a 200 de reserva como mínimo (`REFILL`), pistola llena, bidones repuestos y 20 s de descanso (`REST_TIME`).
@@ -216,15 +222,35 @@ Parámetros útiles en la URL:
   - El usuario quiere skins para las armas, cuchillos tipo CoD/CS2 y una forma de conseguirlos (también los llaveros) para que la gente siga jugando, con el progreso guardado en cada dispositivo.
   - Plan por fases, de más fácil a más difícil:
     1. Skins de fusil y pistola (hecha, ver Arquitectura).
-    2. Perfil en `localStorage` (`nightfall.profile`), que recoge `nightfall.charms` y `nightfall.skins`.
+    2. Perfil en `localStorage` (`nightfall.profile`), que recoge `nightfall.charms` y `nightfall.skins` (hecha, ver Perfil en Arquitectura).
     3. Niveles por XP más monedas para abrir cajas con ruleta tipo CS2.
     4. Cuchillos: karambit, bayoneta M9, tomahawk y mariposa, la última por ser la más difícil.
   - Respuestas del usuario: se consiguen con niveles y cajas a la vez, los demás jugadores en línea ven tu skin y tu cuchillo, y las skins deben parecer muy reales, como las de CS:GO y CoD.
+  - **Fase 1, skins**:
+    - Claude buscó referencias de CS2 (fade, doppler, case hardened, damasco, diente de tigre, mármol) y de CoD (camuflajes militares, oro, diamante, materia oscura, espina oscura) y las recreó con nombres propios.
+    - Tras las primeras capturas se quitó casi todo el grano a los metales pulidos (parecían de arena), se oscurecieron el ártico y el desierto (se quemaban con el foco de la armería) y se achicaron los desconchones.
+    - Al usuario le gustaron mucho y quiere más en el futuro.
+    - Se quejó de que el juego se congelaba al cambiar de skin. Al medirlo, eran la compilación del shader (~840 ms la primera vez), el pintado (50-210 ms) y la subida de texturas. Se arregló con workers, precompilación y subida escalonada (ver Skins en Arquitectura).
+  - **Fase 2, perfil**: el usuario no quiso código de copia de seguridad (el progreso solo vive en el dispositivo) y dejó para más adelante que las skins se vean en línea.
+  - Se le explicó al usuario cómo se guarda:
+    - Va en `localStorage` (datos de sitios), no en cookies, y no sale del navegador.
+    - Cada navegador y cada dirección (localhost o la web publicada) tiene su propio progreso.
+    - Se pierde al borrar los datos o en incógnito, y Safari lo borra tras 7 días sin visitas.
+    - Se puede trucar desde la consola, pero solo da cosas estéticas.
+    - Para seguir a la persona entre dispositivos harían falta cuentas y un servidor (por ejemplo, en Cloudflare); queda como idea.
+  - Commits: `23257a2` (skins) y el del perfil, que se subió a GitHub a petición del usuario: la web publicada ya tiene skins y perfil.
+  - **Siguiente: fase 3** (niveles por XP y monedas para abrir cajas con ruleta tipo CS2). Hay que decidir con el usuario:
+    - Cuánta XP da cada cosa en cada modo.
+    - La curva de niveles.
+    - Qué trae cada nivel y qué empieza desbloqueado (al activar `LOCKS`, ¿quien ya tiene skins puestas las conserva?).
+    - Precio y contenido de las cajas, y probabilidades por rareza.
+    - Dónde se abren y cómo es la ruleta.
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
   - Pasar la pausa, la armería, las salas y la pantalla final al estilo del menú nuevo (se ofreció; siguen con los botones de antes).
   - Mecánicas que faltan: solo las granadas (ver "Mecánicas pendientes"). El siguiente bit libre de `flags` es el 14.
+  - **Skins y progreso**: fase 3 (niveles y cajas), fase 4 (cuchillos) y que los demás jugadores vean tu skin y tu cuchillo en línea (ver la sesión del 15 de octubre, tercera parte).
   - **Más skins en el futuro.** Al usuario le gustaron mucho los diseños de la fase 1 y quiere ampliar el catálogo más adelante. Para añadir una, basta con otra entrada en `SKINS` con su función `paint` (ver Skins en Arquitectura).
 
 ## Mecánicas pendientes
