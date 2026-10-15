@@ -2,6 +2,8 @@
 // y los ajustes de la partida (que sólo puede cambiar el anfitrión).
 import { TEAMS } from './net.js';
 import { MAPS } from './maps.js';
+import { rankTag } from './hud.js';
+import { profile } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const NAME_KEY = 'nightfall.name';
@@ -85,7 +87,8 @@ export class Lobby {
     this.error('');
     this.setBusy(true);
     try {
-      if (joining) await this.net.join(code, name); else await this.net.create(name);
+      const rank = [profile.prestige, profile.level];
+      if (joining) await this.net.join(code, name, rank); else await this.net.create(name, rank);
     } catch (e) {
       this.error(e.message);
     }
@@ -115,7 +118,9 @@ export class Lobby {
       const players = room.players.filter((p) => p.team === t);
       for (const p of players) {
         const li = document.createElement('li');
-        li.textContent = p.name;
+        const tag = rankTag(p);
+        if (tag) li.append(tag);
+        li.append(p.name);
         if (p.id === net.id) li.classList.add('me');
         if (p.id === room.host) li.dataset.tag = 'ANFITRIÓN';
         list.appendChild(li);

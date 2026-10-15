@@ -374,3 +374,28 @@ export function paintRows(id, j0, j1) {
   return { col, mr, em };
 }
 const clamp255 = (v) => (v <= 0 ? 0 : v >= 1 ? 255 : (v * 255 + 0.5) | 0);
+
+// Miniatura de la skin (ruleta y premios del Mercado Negro): el tramo central del lienzo en w × h píxeles RGBA,
+// con la emisión sumada al color. Promedia 3 × 3 muestras por píxel para que el detalle fino no se vea granulado.
+export function paintThumb(id, w, h) {
+  const def = skinById(id);
+  const out = new Uint8ClampedArray(w * h * 4);
+  const o = { c: [0, 0, 0], rough: 0.5, metal: 0, e: null };
+  const u0 = 0.1; const span = 1.8 / w; // de 0,1 a 1,9 a lo largo del arma; píxeles cuadrados
+  const v0 = 0.5 - (h * span) / 2;
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      let r = 0; let g = 0; let b = 0;
+      for (let sy = 0; sy < 3; sy++) {
+        for (let sx = 0; sx < 3; sx++) {
+          o.e = null; o.c[0] = 0.1; o.c[1] = 0.1; o.c[2] = 0.11;
+          def.paint?.(u0 + (i + (sx + 0.5) / 3) * span, v0 + (j + (sy + 0.5) / 3) * span, o);
+          r += o.c[0] + (o.e ? o.e[0] * 0.6 : 0); g += o.c[1] + (o.e ? o.e[1] * 0.6 : 0); b += o.c[2] + (o.e ? o.e[2] * 0.6 : 0);
+        }
+      }
+      const k = (j * w + i) * 4;
+      out[k] = (r / 9) * 255; out[k + 1] = (g / 9) * 255; out[k + 2] = (b / 9) * 255; out[k + 3] = 255;
+    }
+  }
+  return out;
+}

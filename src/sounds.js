@@ -326,6 +326,34 @@ export function installSounds(proto) {
     for (const [f, d] of [[392, 0], [587, 0.11], [784, 0.22]]) this.tone(out, { type: 'triangle', f0: f, peak: 0.35, attack: 0.01, decay: 0.5, delay: d });
   });
 
+  // Subida de nivel: arpegio que sube con un brillo final.
+  def('levelUp', function () {
+    const out = this._out(0, 0.3, 0.32);
+    for (const [f, d] of [[523, 0], [659, 0.08], [784, 0.16], [1047, 0.24]]) this.tone(out, { type: 'triangle', f0: f, peak: 0.3, attack: 0.01, decay: 0.45, delay: d });
+    this.tone(out, { type: 'sine', f0: 2093, peak: 0.12, attack: 0.02, decay: 0.8, delay: 0.32 });
+  });
+
+  // Ruleta de los alijos: tic seco al pasar cada casilla por la marca.
+  def('caseTick', function () {
+    const out = this._out(0, 0, 0.22);
+    this.noise(out, { type: 'bandpass', f0: 3200, q: 3, peak: 0.5, decay: 0.018 });
+    this.tone(out, { type: 'square', f0: 1400, peak: 0.06, decay: 0.012 });
+  });
+
+  // La ruleta se para: acorde que se hace más largo y brillante cuanto más rara es la skin (0 a 4).
+  def('caseReveal', function (rarity) {
+    const out = this._out(0, 0.35, 0.3);
+    const notes = [[392, 494, 587], [440, 554, 659], [466, 587, 698, 932], [523, 659, 784, 1047], [587, 740, 880, 1175, 1480]][rarity] || [440];
+    notes.forEach((f, i) => this.tone(out, { type: 'triangle', f0: f, peak: 0.26, attack: 0.01, decay: 0.6 + rarity * 0.25, delay: i * 0.05 }));
+    if (rarity >= 3) this.noise(out, { type: 'highpass', f0: 5000, peak: 0.15, attack: 0.05, decay: 0.9, delay: 0.1 });
+  });
+
+  // Monedas: tintineo corto (skin repetida cambiada por monedas).
+  def('coins', function () {
+    const out = this._out(0, 0.1, 0.22);
+    for (let i = 0; i < 5; i++) this.tone(out, { type: 'sine', f0: rand(2400, 3400), peak: 0.15, decay: 0.12, delay: i * 0.05 + rand(0, 0.02) });
+  });
+
   // Zumbido y chasquido de una luminaria que parpadea.
   def('buzz', function (x, y, z) {
     const s = this.spatial(x, y, z, 4);

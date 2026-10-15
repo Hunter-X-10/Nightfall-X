@@ -5,13 +5,15 @@ import { TEAMS } from './net.js';
 import { WEAPONS } from './weapon.js';
 import { ARMOR_MAX, ITEM_MAX } from './loot.js';
 import { clamp } from './utils.js';
+import { ROMAN, charmName } from './progress.js';
 
 const $ = (id) => document.getElementById(id);
 const PX_PER_DEG = 3.6;
 const FEED_MAX = 5;
 const FEED_MS = 6000;
-// Siluetas de la barra de armas (fusil, pistola, cuchillo, vendas, botiquín), en un lienzo de 64 x 24.
-const ICONS = [
+// Siluetas de la barra de armas (fusil, pistola, cuchillo, vendas, botiquín), en un lienzo de 64 x 24. El
+// Mercado Negro usa la del fusil para las miniaturas de las skins.
+export const ICONS = [
   '<polygon points="2,9 13,9 15,7 40,7 40,5 45,5 45,7 62,7 62,10 46,10 44,12 36,12 33,21 28,21 30,12 22,12 20,17 15,17 16,12 2,13"/>',
   '<polygon points="14,6 50,6 50,11 36,11 34,14 28,14 25,22 17,22 20,11 14,11"/>',
   '<polygon points="4,13 30,7 38,7 38,10 60,10 60,15 38,15 38,17 30,17 14,16"/>',
@@ -31,6 +33,14 @@ const el = (tag, cls, text) => {
   return e;
 };
 
+// Nivel del jugador, con la estrella de prestigio si la tiene (null con clientes antiguos, que no lo envían).
+export function rankTag(p) {
+  if (!p.lv) return null;
+  const tag = el('i', p.pr ? 'rank pr' : 'rank', String(p.lv));
+  if (p.pr) tag.prepend(el('b', '', `★${ROMAN[p.pr]}`));
+  return tag;
+}
+
 // Tabla de jugadores por equipo (marcador con Tab y pantalla de fin de partida).
 export function renderBoard(root, room, myId) {
   root.textContent = '';
@@ -44,7 +54,10 @@ export function renderBoard(root, room, myId) {
     const players = room.players.filter((p) => p.team === t && p.playing).sort((a, b) => b.k - a.k || a.d - b.d);
     for (const p of players) {
       const row = el('div', p.id === myId ? 'board-row me' : 'board-row');
-      row.append(el('span', '', p.name), el('span', '', p.k), el('span', '', p.d));
+      const name = el('span', '', p.name);
+      const tag = rankTag(p);
+      if (tag) name.prepend(tag);
+      row.append(name, el('span', '', p.k), el('span', '', p.d));
       col.appendChild(row);
     }
     root.appendChild(col);
@@ -61,7 +74,7 @@ export class HUD {
       obj: $('objective'), objText: $('objective-text'), objSub: $('objective-sub'), strip: $('compass-strip'), cObj: $('compass-obj'),
       marker: $('obj-marker'), dist: $('obj-dist'), msg: $('center-msg'), kill: $('kill-msg'), fps: $('fps-counter'),
       wname: $('weapon-name'), ammo: $('ammo'), toolbar: $('toolbar'),
-      clock: $('clock'),
+      clock: $('clock'), xp: $('xp-feed'), lvl: $('level-up'),
       score: $('score'), score0: $('score-0'), score1: $('score-1'), goal: $('score-goal'), feed: $('killfeed'), board: $('scoreboard'),
     };
     // Brújula: marcas cada 15° repetidas tres vueltas para poder desplazarla sin costuras.
@@ -122,6 +135,27 @@ export class HUD {
     this.set('useText', text, (v) => { if (v) this.el.useText.textContent = v; this.el.use.classList.toggle('on', !!v); });
     this.set('useFull', full, (v) => this.el.use.classList.toggle('full', v));
   }
+  // ---------- Progreso (src/progress.js) ----------
+  // XP ganada: una línea junto a la cruceta que sube y se desvanece (como mucho 4 a la vez).
+  xpGain(n, label) {
+    const row = el('div');
+    row.append(el('b', '', `+${n} XP`), el('span', '', label));
+    row.addEventListener('animationend', () => row.remove());
+    this.el.xp.prepend(row);
+    while (this.el.xp.children.length > 4) this.el.xp.lastChild.remove();
+  }
+
+  // Subida de nivel: cartel arriba con el nivel y lo que trae (alijo, monedas y, a veces, un llavero).
+  levelUp(r) {
+    const box = this.el.lvl;
+    box.textContent = '';
+    box.append(el('div', 'lu-pre', r.extra ? 'NIVEL MÁXIMO · PREMIO' : 'SUBES DE NIVEL'), el('div', 'lu-num', String(r.level)));
+    box.append(el('div', 'lu-sub', `+${r.cases} ALIJO · +${r.coins} ◈${r.charm ? ` · LLAVERO ${charmName(r.charm)}` : ''}`));
+    box.classList.remove('on');
+    void box.offsetWidth;
+    box.classList.add('on');
+  }
+
   message(text, time = 1.5) { this.set('msg', text, (v) => { this.el.msg.textContent = v; }); this.msgT = time; }
 
   // ---------- Partida en línea ----------

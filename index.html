@@ -51,6 +51,9 @@
     <div id="kill-msg"></div>
     <div id="quick-hint"><b>V</b>CUCHILLO</div>
     <div id="use-hint"><b>F</b><span id="use-text">ABRIR COFRE</span></div>
+    <!-- Progreso: XP ganada junto a la cruceta y cartel de subida de nivel -->
+    <div id="xp-feed"></div>
+    <div id="level-up"></div>
 
     <div id="health">
       <div id="armor">
@@ -105,9 +108,21 @@
           <span class="mi-num">03</span><span class="mi-label">MULTIJUGADOR</span><span class="mi-desc">ALFA contra BRAVO, en línea</span>
         </button>
         <button id="btn-armory" class="mi" disabled>
-          <span class="mi-num">04</span><span class="mi-label">ARMERÍA</span><span class="mi-desc">Llaveros para tus armas</span>
+          <span class="mi-num">04</span><span class="mi-label">ARMERÍA</span><span class="mi-desc">Skins y llaveros para tus armas</span>
+        </button>
+        <button id="btn-market" class="mi" disabled>
+          <span class="mi-num">05</span><span class="mi-label">MERCADO NEGRO</span><span class="mi-desc">Abre alijos y consigue skins</span>
         </button>
       </nav>
+    </div>
+
+    <!-- Ficha del jugador: prestigio, nivel, XP, monedas y alijos (la rellena main.js) -->
+    <div id="player-card">
+      <div class="pc-rank"><span id="pc-badge" class="pc-badge"></span><span class="pc-level">NIVEL <b id="pc-level">1</b><small>/ 25</small></span></div>
+      <div class="pc-bar"><i id="pc-fill"></i></div>
+      <div id="pc-xp" class="pc-xp"></div>
+      <div class="pc-wallet"><span><b id="pc-coins">0</b> ◈</span><span><b id="pc-cases">0</b> ALIJOS</span></div>
+      <button id="btn-prestige" class="btn small hidden"></button>
     </div>
 
     <!-- Controles, abajo -->
@@ -154,6 +169,39 @@
       <div id="armory-tip" class="tip"></div>
       <button id="btn-armory-back" class="link">← VOLVER</button>
     </div>
+  </div>
+
+  <!-- Mercado Negro: alijos (cajas de skins) con ruleta. La skin ganada se ve en la escena, a la derecha -->
+  <div id="market" class="screen hidden">
+    <div class="menu-inner">
+      <div class="pre">MERCADO NEGRO</div>
+      <div id="mk-main">
+        <h2>ALIJOS</h2>
+        <div class="mk-wallet"><span><b id="mk-coins">0</b> ◈ MONEDAS</span><span><b id="mk-cases">0</b> ALIJOS</span></div>
+        <button id="btn-mk-open" class="btn">ABRIR ALIJO</button>
+        <div class="mk-table">
+          <div class="mk-cap"><span>CONTENIDO DEL ALIJO</span><span>PROB.</span><span>TIENES</span></div>
+          <div id="mk-odds"></div>
+          <div class="mk-cap total"><span>COLECCIÓN</span><span></span><span id="mk-col"></span></div>
+        </div>
+        <div id="mk-tip" class="tip"></div>
+        <button id="btn-mk-back" class="link">← VOLVER</button>
+      </div>
+      <div id="mk-reveal" class="hidden">
+        <div class="mk-won-pre">HAS CONSEGUIDO</div>
+        <img id="mk-won-img" alt="">
+        <h2 id="mk-won-name"></h2>
+        <div class="mk-won-line"><span id="mk-won-rar"></span><span id="mk-won-state"></span></div>
+        <div id="mk-equip" class="tabs modes"></div>
+        <button id="btn-mk-again" class="btn">ABRIR OTRO</button>
+        <button id="btn-mk-next" class="link">← VOLVER A LOS ALIJOS</button>
+      </div>
+    </div>
+  </div>
+  <div id="roulette" class="hidden">
+    <div id="rl-strip"></div>
+    <i class="rl-mark"></i>
+    <div class="rl-hint">CLIC PARA SALTAR</div>
   </div>
 
   <!-- Supervivencia: elección de mapa (los botones los crea main.js con el récord de cada uno) -->
@@ -252,6 +300,7 @@
       <h2 id="end-title">COMPLETADA</h2>
       <div id="end-stats"></div>
       <div id="end-board" class="board hidden"></div>
+      <div id="end-xp"></div>
       <button id="btn-again" class="btn">VOLVER A JUGAR</button>
       <button id="btn-end-lobby" class="btn hidden">VOLVER A LA SALA</button>
       <button id="btn-end-menu" class="btn ghost">MENÚ PRINCIPAL</button>

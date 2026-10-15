@@ -79,11 +79,24 @@ Parámetros útiles en la URL:
   - Se eligen en la armería (`src/armory.js`, botón ARMERÍA del menú). Ahí el arma se expone con `Weapon.showcase()`.
   - Se guardan en el perfil (`src/profile.js`) y solo los ve el propio jugador; no viajan por la red.
 - **Perfil** (`src/profile.js`): todo el progreso cosmético en un solo registro de `localStorage`, `nightfall.profile`. Solo vive en este dispositivo: el usuario no quiso código de copia de seguridad.
-  - Guarda la versión (`v`), el nivel, la XP, las monedas, lo desbloqueado (`unlocked.skins` y `unlocked.charms`) y lo que lleva cada arma (`equip.skins`, 2 huecos, y `equip.charms`, 3).
+  - Guarda la versión (`v`, ahora 2), el nivel, la XP dentro del nivel, el prestigio, las monedas, los alijos sin abrir (`cases`), lo desbloqueado (`unlocked.skins` y `unlocked.charms`) y lo que lleva cada arma (`equip.skins`, 2 huecos, y `equip.charms`, 3).
   - API: `profile` (también en `__game.profile`), `equipped(tipo, arma)`, `equip(tipo, arma, id)`, `isUnlocked`, `unlock` y `saveProfile`. La armería y `Weapon` leen y escriben solo por aquí.
-  - `sanitize` lo deja sano al cargar: si el JSON está roto, empieza de cero; quita los objetos que ya no existen y corrige los números raros. Si añades campos, súmalos ahí y en `fresh`, y sube `VERSION` si cambia el formato.
-  - La primera vez recoge las claves antiguas `nightfall.charms` y `nightfall.skins` y luego las borra. Los récords de supervivencia siguen aparte (`nightfall.survival`).
-  - `LOCKS = false`: mientras no haya forma de conseguir las cosas (fase 3), todo está desbloqueado. `none` siempre lo está.
+  - `sanitize` lo deja sano al cargar: si el JSON está roto, empieza de cero; quita los objetos que ya no existen, lo puesto que no se tiene y corrige los números raros. Si añades campos, súmalos ahí y en `fresh`, y sube `VERSION` si cambia el formato.
+  - `LOCKS = true`: solo se puede llevar lo conseguido (`none` siempre). Un perfil de la versión 1 (con todo abierto) se cambia por uno nuevo: el usuario quiso que todos empezaran de cero. Se borran también las claves antiguas `nightfall.charms` y `nightfall.skins`. Los récords de supervivencia siguen aparte (`nightfall.survival`).
+- **Progreso** (`src/progress.js`, sin three.js): XP, niveles, prestigio, monedas y alijos. Diseño del usuario: el nivel máximo se alcanza en ~1 h 30 min de juego "para que sea adictivo".
+  - XP (`XP`): baja 100, a la cabeza +50, cuchillo o golpe rápido +100, oleada superada 150 × su número, misión completada 1000, y al acabar una partida en línea 1000 si se gana, 600 si hay empate y 400 si se pierde. Cada baja da además 5 monedas (`COINS`).
+  - Niveles 1 a 25 (`MAX_LEVEL`, en `profile.js`). Del nivel n al siguiente, `xpFor(n)` = 700 + 50·(n−1): ~30 600 XP en total. Cada nivel da un alijo y 100 monedas; los niveles 4, 8, 12, 16, 20 y 24 dan además un llavero (`CHARM_LEVELS`). En el 25, cada 1900 XP más dan otro alijo y 100 monedas.
+  - Prestigio: en el 25 se puede volver al nivel 1 con una estrella (I a X, `PRESTIGE_MAX`), conservando todo lo conseguido. Botón en la ficha del menú, con confirmación.
+  - `award(xp, motivo, monedas)` y `awardKill(cabeza, cuchillo)` suman y avisan al HUD por `events.gain`/`events.level` (los conecta `main.js`; en el menú no se enseñan). Se llaman desde `combat.onKill` (IA), el mensaje `kill` en línea (solo las bajas propias), el `end` de la partida, `g.onMissionEnd` y `survival.endWave`. `session` guarda lo ganado en la partida para la pantalla final (`renderEndXp`).
+  - Alijos: `openCase()` gasta uno ganado o compra uno por 250 monedas (`CASE_PRICE`). Rareza con `ODDS` (común 50 %, rara 28 %, épica 14 %, legendaria 6 %, mítica 2 %) y skin al azar de esa rareza. Una repetida se cambia por monedas (`REFUND`: 25, 60, 120, 250 y 500).
+  - Interfaz: ficha del jugador arriba a la derecha del menú (`#player-card`), XP junto a la cruceta (`#xp-feed`), cartel de subida de nivel (`#level-up`), resumen en la pantalla final (`#end-xp`) y nivel con estrella junto al nombre en la sala y el marcador (`rankTag` de `hud.js`). Sonidos `audio.levelUp`, `caseTick`, `caseReveal(rareza)` y `coins`.
+  - En pruebas: `__game.progress.award(xp, 'TEST')`, `__game.progress.session` y `__game.progress.prestige()`.
+- **Mercado Negro** (`src/market.js`, entrada 05 del menú; el nombre lo eligió Claude, el usuario pidió uno "guapo"): se abren los alijos con una ruleta horizontal tipo CS2.
+  - La ruleta tiene 54 casillas con la ganadora en la 46 (las demás, al azar con las mismas probabilidades) y frena en 6,2 s con tics al pasar cada casilla. Un clic la salta.
+  - Al pararse se enseña el premio (nueva o repetida con sus monedas) y la skin se pone en el fusil de la escena como vista previa (`weapon.setSkin` sin tocar el perfil; `closeReveal` devuelve lo puesto). PONER EN FUSIL / PISTOLA la equipa de verdad.
+  - Miniaturas: la silueta del fusil de la barra (`ICONS[0]` de `hud.js`) pintada con la skin (`paintThumb` de `skinPaint.js`, en el worker de las skins) y guardada como imagen.
+  - Mientras está abierta (o la armería), el menú no cambia de plano. Si el plano era el que cruza el todoterreno, se pasa al siguiente para no quedarse dentro de la cabina.
+- **Armería y bloqueos**: lo que no se tiene sale apagado; los llaveros dicen en qué nivel salen y las skins, que vienen de los alijos.
 - **Skins** del fusil y la pistola (`src/skins.js`): 21 acabados procedurales en el catálogo `SKINS`, cada uno con su rareza (`RARITY`: común, rara, épica, legendaria y mítica, con los colores de los shooters).
   - Recrean acabados genéricos de CS2 y CoD con nombres propios: camuflajes, pavonado, fibra de carbono, telaraña, óxido, temple, damasco, anodizados, degradado, oro, diamante, nebulosa y lava. Por decisión de Claude, no se copian los diseños con autor (Asiimov, Dragon Lore…) ni sus nombres.
   - El catálogo y los pintores están en `src/skinPaint.js`, sin three.js; `skins.js` los vuelve a exportar. Cada skin es una función `paint(x, y, o)` que se pinta por píxel en tres búferes de 1024×512: color, rugosidad y metal (G y B) y emisión. Se pinta al elegirla y la comparten fusil y pistola. Las texturas se liberan cuando ya nadie las usa.
@@ -115,6 +128,7 @@ Parámetros útiles en la URL:
   - Bit 11, `FLAG.SLIDE`: se está deslizando (ver Deslizamiento).
   - Bit 12, `FLAG.VAULT`: está trepando (ver Trepar).
   - Bit 13, `FLAG.ITEM`: lleva vendas o botiquín en la mano (ver Vendas y botiquín).
+  - Nivel: `create` y `join` llevan `rank: [prestigio, nivel]` y el mensaje `rank` lo actualiza al subir de nivel en partida. La sala lo acota (`setRank`) y lo reparte en `players` como `pr` y `lv`. Solo se muestra.
   - Botín: mensajes `open`, `take`, `loot`, `chests` y `drop` dentro de `kill` (ver Botín en línea).
   - El mensaje `hit` lleva `k`: con `k = 1` (puñalada rápida) la víctima ignora `dmg` y se queda con `STAB_LEFT` de vida, porque solo ella sabe cuánta le queda (`main.js`, manejador `hit`).
 
@@ -239,18 +253,17 @@ Parámetros útiles en la URL:
     - Se puede trucar desde la consola, pero solo da cosas estéticas.
     - Para seguir a la persona entre dispositivos harían falta cuentas y un servidor (por ejemplo, en Cloudflare); queda como idea.
   - Commits: `23257a2` (skins) y el del perfil, que se subió a GitHub a petición del usuario: la web publicada ya tiene skins y perfil.
-  - **Siguiente: fase 3** (niveles por XP y monedas para abrir cajas con ruleta tipo CS2). Hay que decidir con el usuario:
-    - Cuánta XP da cada cosa en cada modo.
-    - La curva de niveles.
-    - Qué trae cada nivel y qué empieza desbloqueado (al activar `LOCKS`, ¿quien ya tiene skins puestas las conserva?).
-    - Precio y contenido de las cajas, y probabilidades por rareza.
-    - Dónde se abren y cómo es la ruleta.
+- **Sesión del 15 de octubre de 2026 (cuarta parte)**: **fase 3, niveles y alijos** (detalles en Arquitectura: Progreso y Mercado Negro).
+  - Respuestas del usuario: llegar al nivel máximo en 1 h 30 min "para que sea adictivo", probabilidades generosas (no las de CS2: con 20 skins una mítica saldría 1 de cada 150 alijos), repetidas a monedas, todos desde cero al activar los bloqueos, prestigio con insignia (en el menú y en el marcador en línea) y alijo y monedas en cada nivel también después, las cajas en una entrada propia del menú con un nombre "guapo", y los llaveros solo por niveles.
+  - Decisiones de Claude: nombres MERCADO NEGRO y ALIJOS, 25 niveles con la curva de `xpFor`, 250 monedas por alijo, 5 por baja y 100 por nivel, y los llaveros en los niveles 4 a 24. El ritmo está calculado a ojo (~350 XP por minuto mezclando modos).
+  - El usuario lo probó en local, le pareció "perfecto" y pidió subirlo: la web publicada ya tiene niveles y alijos.
+  - En el menú, `award` actualiza la ficha al momento (antes solo se veía al volver de otra pantalla).
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
   - Pasar la pausa, la armería, las salas y la pantalla final al estilo del menú nuevo (se ofreció; siguen con los botones de antes).
   - Mecánicas que faltan: solo las granadas (ver "Mecánicas pendientes"). El siguiente bit libre de `flags` es el 14.
-  - **Skins y progreso**: fase 3 (niveles y cajas), fase 4 (cuchillos) y que los demás jugadores vean tu skin y tu cuchillo en línea (ver la sesión del 15 de octubre, tercera parte).
+  - **Skins y progreso**: fase 4 (cuchillos) y que los demás jugadores vean tu skin y tu cuchillo en línea (ver la sesión del 15 de octubre, tercera parte).
   - **Más skins en el futuro.** Al usuario le gustaron mucho los diseños de la fase 1 y quiere ampliar el catálogo más adelante. Para añadir una, basta con otra entrada en `SKINS` con su función `paint` (ver Skins en Arquitectura).
 
 ## Mecánicas pendientes

@@ -9,6 +9,7 @@ import { SPAWN } from './layout.js';
 import { makeCanvas, tex } from './textures.js';
 import { NavGrid } from './navgrid.js';
 import { ARMOR_MAX } from './loot.js';
+import { award, XP } from './progress.js';
 import { rand } from './utils.js';
 
 export const FIRST_WAVE = 4; // enemigos de la primera oleada
@@ -190,6 +191,7 @@ export class Survival {
     const { hud, audio, player, weapon, combat } = this.g;
     const bonus = POINTS.wave * this.wave;
     this.score += bonus;
+    award(XP.wave * this.wave, `OLEADA ${this.wave}`);
     this.phase = 'rest';
     this.restT = REST_TIME;
     if (!player.dead) player.health = 100;

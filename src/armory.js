@@ -1,15 +1,17 @@
 // Armería: pantalla del menú para elegir la skin y el llavero de cada arma. El arma elegida se expone en la
 // escena, a la derecha del panel (ver Weapon.showcase), y la elección se guarda en el perfil (src/profile.js).
+// Lo que aún no se tiene sale apagado: las skins vienen de los alijos y los llaveros, de los niveles.
 import { CHARMS } from './charms.js';
 import { SKINS, RARITY, skinById } from './skins.js';
-import { SKIN_SLOTS, equip, equipped } from './profile.js';
+import { SKIN_SLOTS, equip, equipped, isUnlocked } from './profile.js';
+import { charmLevel } from './progress.js';
 import { WEAPONS, ARMS } from './weapon.js';
 
 const $ = (id) => document.getElementById(id);
 
 const MODES = [
-  { id: 'skins', name: 'SKINS', tip: 'Acabado del arma en primera persona. Se guarda en tu perfil, en este dispositivo.' },
-  { id: 'charms', name: 'LLAVEROS', tip: 'Cuelga de tu arma en primera persona. Se guarda en tu perfil, en este dispositivo.' },
+  { id: 'skins', name: 'SKINS', tip: 'Acabado del arma en primera persona. Las que te faltan salen en los alijos del Mercado Negro.' },
+  { id: 'charms', name: 'LLAVEROS', tip: 'Cuelga de tu arma en primera persona. Se consiguen subiendo de nivel, uno cada 4 niveles.' },
 ];
 
 export class Armory {
@@ -44,6 +46,7 @@ export class Armory {
       const b = document.createElement('button');
       b.className = 'btn ghost small';
       b.textContent = c.name;
+      if (c.id !== 'none') b.appendChild(document.createElement('small'));
       b.addEventListener('click', () => this.pick(c.id));
       $('armory-grid').appendChild(b);
       return b;
@@ -95,8 +98,17 @@ export class Armory {
     $('armory-grid').classList.toggle('hidden', skins);
     this.modeTabs.forEach((b, i) => b.classList.toggle('on', MODES[i].id === this.mode));
     this.tabs.forEach((b, i) => { b.classList.toggle('on', i === this.slot); b.disabled = skins && i >= SKIN_SLOTS; });
-    this.tiles.forEach((b, i) => b.classList.toggle('on', CHARMS[i].id === equipped('charms', this.slot)));
-    this.skinTiles.forEach((b, i) => b.classList.toggle('on', SKINS[i].id === equipped('skins', this.slot)));
+    this.tiles.forEach((b, i) => {
+      const { id } = CHARMS[i];
+      const locked = !isUnlocked('charms', id);
+      b.classList.toggle('on', id === equipped('charms', this.slot));
+      b.classList.toggle('locked', locked);
+      if (b.lastChild.tagName === 'SMALL') b.lastChild.textContent = locked ? `NIVEL ${charmLevel(id)}` : '';
+    });
+    this.skinTiles.forEach((b, i) => {
+      b.classList.toggle('on', SKINS[i].id === equipped('skins', this.slot));
+      b.classList.toggle('locked', !isUnlocked('skins', SKINS[i].id));
+    });
     if (skins) {
       const s = skinById(equipped('skins', this.slot));
       $('armory-tip').innerHTML = `<span style="color:${RARITY[s.rarity].color}">${s.name} · ${RARITY[s.rarity].name}</span><br>${mode.tip}`;

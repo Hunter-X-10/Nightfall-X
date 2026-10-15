@@ -12,9 +12,10 @@ import { Weather } from './weather.js';
 import { tickVolumetrics } from './volumetric.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { Weapon, LIGHT_POWER } from './weapon.js';
+import { Weapon, LIGHT_POWER, KNIFE } from './weapon.js';
 import { setSkinRenderer } from './skins.js';
-import { profile } from './profile.js';
+import { profile, MAX_LEVEL } from './profile.js';
+import { XP, ROMAN, award, awardKill, startSession, session, events as progress, xpFor, canPrestige, prestige, charmName } from './progress.js';
 import { Enemies } from './enemies.js';
 import { HUD, renderBoard } from './hud.js';
 import { Combat, STAB_LEFT } from './combat.js';
@@ -22,6 +23,7 @@ import { Net, TEAMS, FLAG, WEAPON_SHIFT, LEAN_SHIFT } from './net.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Lobby } from './lobby.js';
 import { Armory } from './armory.js';
+import { Market } from './market.js';
 import { Survival, loadRecords, fmt } from './survival.js';
 import { LootWorld } from './lootWorld.js';
 import { ARMOR_MAX, ITEM, ITEM_MAX, ITEM_NAMES, PICK_R } from './loot.js';
@@ -163,8 +165,74 @@ async function boot() {
   enemies.spawn(world.enemies);
   const combat = (g.combat = new Combat(g));
   const survival = (g.survival = new Survival(g, scene));
-  combat.onKill = (e, part) => survival.onKill(e, part);
+  combat.onKill = (e, part) => {
+    const knife = weapon.cur === KNIFE || !!weapon.quick;
+    survival.onKill(e, part);
+    awardKill(part === 'head', knife);
+  };
   let hurtFlash = 0; let endTimer = 0;
+
+  // ---------- Progreso (src/progress.js) ----------
+  // En el menú no hay HUD: se actualiza la ficha (y el Mercado Negro, si está abierto).
+  progress.gain = (xp, label) => {
+    if (state !== 'menu') { hud.xpGain(xp, label); return; }
+    refreshProfile();
+    if (market.open && !market.spin && !market.won) market.render();
+  };
+  progress.level = (r) => {
+    if (state === 'menu') return;
+    hud.levelUp(r); audio.levelUp();
+    if (mode === 'online') net.setRank([profile.prestige, profile.level]);
+  };
+  // Ficha del menú: prestigio, nivel, barra de XP, monedas y alijos; y aviso en el Mercado Negro si hay alijos.
+  let prestigeAsk = false; // primer clic en PRESTIGIO: pide confirmación
+  const fmtN = (n) => n.toLocaleString('es-ES');
+  const refreshProfile = () => {
+    $('pc-badge').textContent = profile.prestige ? `★ ${ROMAN[profile.prestige]}` : '';
+    $('pc-level').textContent = profile.level;
+    const need = xpFor(profile.level);
+    $('pc-fill').style.width = `${Math.min(100, (profile.xp / need) * 100)}%`;
+    $('pc-xp').textContent = prestigeAsk ? 'VUELVES AL NIVEL 1 Y CONSERVAS TODO'
+      : `${fmtN(profile.xp)} / ${fmtN(need)} XP${profile.level >= MAX_LEVEL ? ' · PRÓXIMO PREMIO' : ''}`;
+    $('pc-coins').textContent = fmtN(profile.coins);
+    $('pc-cases').textContent = profile.cases;
+    const pb = $('btn-prestige');
+    pb.classList.toggle('hidden', !canPrestige());
+    pb.classList.toggle('confirm', prestigeAsk);
+    pb.textContent = prestigeAsk ? 'CONFIRMAR PRESTIGIO' :`PRESTIGIO ★ ${ROMAN[profile.prestige + 1]}`;
+    $('btn-market').classList.toggle('ready', profile.cases > 0);
+    $('btn-market').querySelector('.mi-desc').textContent = profile.cases > 0
+      ? `Tienes ${profile.cases} ${profile.cases === 1 ? 'alijo' : 'alijos'} sin abrir` : 'Abre alijos y consigue skins';
+  };
+  $('btn-prestige').addEventListener('click', () => {
+    if (!prestigeAsk) { prestigeAsk = true; refreshProfile(); return; }
+    prestigeAsk = false;
+    if (prestige()) { audio.init(); audio.levelUp(); }
+    refreshProfile();
+  });
+  $('player-card').addEventListener('pointerleave', () => { if (prestigeAsk) { prestigeAsk = false; refreshProfile(); } });
+
+  // Pantalla final: lo ganado en la partida, con la barra del nivel llenándose.
+  const renderEndXp = () => {
+    const box = $('end-xp');
+    box.textContent = '';
+    if (!session.xp && !session.coins) return;
+    const head = document.createElement('div'); head.className = 'ex-head';
+    head.innerHTML = `<span>NIVEL <b>${profile.level}</b></span><span class="gain">+${fmtN(session.xp)} XP</span>`;
+    const bar = document.createElement('div'); bar.className = 'ex-bar';
+    const fill = document.createElement('i'); bar.appendChild(fill);
+    const from = session.ups ? 0 : (session.startXp / xpFor(profile.level)) * 100;
+    fill.style.width = `${from}%`;
+    const gains = document.createElement('div'); gains.className = 'ex-gains';
+    const parts = [];
+    if (session.ups) parts.push(profile.level >= MAX_LEVEL && session.startLevel >= MAX_LEVEL ? `<b>${session.ups} ${session.ups === 1 ? 'PREMIO' : 'PREMIOS'}</b>` : `<b>SUBES ${session.ups} ${session.ups === 1 ? 'NIVEL' : 'NIVELES'}</b>`);
+    if (session.cases) parts.push(`+${session.cases} ${session.cases === 1 ? 'ALIJO' : 'ALIJOS'}`);
+    if (session.coins) parts.push(`+${fmtN(session.coins)} ◈`);
+    for (const c of session.charms) parts.push(`LLAVERO ${charmName(c)}`);
+    gains.innerHTML = parts.join(' · ');
+    box.append(head, bar, gains);
+    requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = `${(profile.xp / xpFor(profile.level)) * 100}%`; }));
+  };
 
   // ---------- Multijugador ----------
   let mode = 'solo'; // solo (misión) | survival | online
@@ -325,7 +393,8 @@ async function boot() {
     input.crouchToggle = false;
     hurtFlash = 0; endTimer = 0; respawnT = 0; sendT = 0; shieldT = 0; matchEnd = null; menuOpen = false;
     state = 'intro'; stateT = 0; fade = 0; fadeTarget = 1;
-    armory.hide();
+    armory.hide(); market.hide();
+    startSession();
     for (const id of ['menu', 'end', 'pause', 'mp', 'lobby', 'survival']) $(id).classList.add('hidden');
     document.body.classList.add('cine');
     weapon.root.visible = true;
@@ -407,6 +476,7 @@ async function boot() {
     document.body.classList.remove('cine');
     for (const id of ['end', 'pause', 'mp', 'lobby', 'survival']) $(id).classList.add('hidden');
     $('menu').classList.remove('hidden');
+    refreshProfile();
   };
   // Tras una partida en línea: de vuelta a la sala de espera, sin salir de ella.
   const toLobby = () => { toMenu(); $('menu').classList.add('hidden'); lobby.showRoom(); };
@@ -434,7 +504,9 @@ async function boot() {
   };
 
   const lobby = new Lobby(net, { onBack: () => $('menu').classList.remove('hidden') });
-  const armory = new Armory(weapon, { onBack: () => $('menu').classList.remove('hidden') });
+  const backToMenu = () => { $('menu').classList.remove('hidden'); refreshProfile(); };
+  const armory = new Armory(weapon, { onBack: backToMenu });
+  const market = new Market(weapon, audio, { onBack: backToMenu });
   net.handlers = {
     joined: () => { lobby.showRoom(); preloadMap(net.room.settings.map); },
     room: () => {
@@ -480,10 +552,13 @@ async function boot() {
         hud.hitmarker('kill'); audio.hitmarker('kill');
         hud.killMsg(`ELIMINADO · ${victim.name}${m.head ? ' · DISPARO A LA CABEZA' : ''}`);
       } else if (m.id === net.id && killer) hud.killMsg(`TE ELIMINÓ ${killer.name}`);
+      if (m.by === net.id && m.id !== net.id) awardKill(m.head, m.w === KNIFE);
     },
     end: (m) => {
       if (mode !== 'online' || matchEnd) return;
       matchEnd = m; endTimer = 1.5;
+      const team = (m.room.players.find((p) => p.id === net.id) || net.me).team;
+      if (m.winner < 0) award(XP.draw, 'EMPATE'); else if (m.winner === team) award(XP.win, 'VICTORIA'); else award(XP.loss, 'PARTIDA TERMINADA');
       input.enabled = false; input.fire = false; input.aim = false; input.keys.clear();
     },
     error: (msg) => lobby.error(msg),
@@ -530,6 +605,7 @@ async function boot() {
         + `<span>PRECISIÓN</span><span>${acc} %</span><span>TIEMPO</span><span>${mm}:${ss}</span>`
         + (prev.score && !s.newRecord ? `<span>RÉCORD</span><span>${fmt(prev.score)} · oleada ${prev.wave}</span>` : '');
       endLayout(false);
+      renderEndXp();
       $('end').classList.remove('hidden');
       return;
     }
@@ -538,6 +614,7 @@ async function boot() {
     $('end-stats').innerHTML = `<span>TIEMPO</span><span>${mm}:${ss}</span><span>BAJAS</span><span>${combat.kills} / ${enemies.list.length}</span>`
       + `<span>DISPAROS A LA CABEZA</span><span>${combat.headshots}</span><span>PRECISIÓN</span><span>${acc} %</span>`;
     endLayout(false);
+    renderEndXp();
     $('end').classList.remove('hidden');
   };
 
@@ -552,9 +629,10 @@ async function boot() {
     $('end-title').textContent = m.winner < 0 ? 'EMPATE' : team === m.winner ? 'VICTORIA' : 'DERROTA';
     renderBoard($('end-board'), m.room, net.id);
     endLayout(true);
+    renderEndXp();
     $('end').classList.remove('hidden');
   };
-  g.onMissionEnd = () => { endTimer = 1.6; player.invulnerable = true; };
+  g.onMissionEnd = () => { endTimer = 1.6; player.invulnerable = true; award(XP.mission, 'MISIÓN COMPLETADA'); };
 
   input.onLockChange = (locked) => {
     if (NOLOCK) return;
@@ -573,6 +651,7 @@ async function boot() {
   $('btn-survival-back').addEventListener('click', () => { $('survival').classList.add('hidden'); $('menu').classList.remove('hidden'); });
   $('btn-mp').addEventListener('click', () => lobby.open());
   $('btn-armory').addEventListener('click', () => armory.show());
+  $('btn-market').addEventListener('click', () => market.show());
   $('btn-leave').addEventListener('click', () => { if (mode === 'online') net.leave(); else audio.resume(); toMenu(); });
   $('btn-end-lobby').addEventListener('click', toLobby);
   $('btn-end-menu').addEventListener('click', () => { net.leave(); toMenu(); });
@@ -610,14 +689,20 @@ async function boot() {
 
     // --- Lógica ---
     if (state === 'menu') {
-      if (armory.open && stateT > 9) stateT = 9; // en la armería no se cambia de plano: se está mirando el arma
+      // En la armería y el Mercado Negro no se cambia de plano: se está mirando el arma (o la ruleta). El primer
+      // plano cruza el todoterreno y, parado al final, se queda dentro de la cabina: entonces se pasa al siguiente.
+      const still = armory.open || market.open;
+      if (still && shot === 0 && stateT > 6) { stateT = 0; shot = 1; }
+      if (still && stateT > 9) stateT = 9;
       if (stateT > 11) { stateT = 0; shot = (shot + 1) % menuShots.length; }
       fadeTarget = stateT < 0.2 || stateT > 10.2 ? 0 : 1;
       placeMenuCam(stateT);
       player.pos.copy(far);
-      weapon.root.visible = armory.open;
+      const show = armory.open ? armory.slot : market.open ? market.showSlot : -1;
+      weapon.root.visible = show >= 0;
       weapon.light.intensity = 0;
-      if (armory.open) weapon.showcase(dt, time, armory.slot);
+      if (show >= 0) weapon.showcase(dt, time, show);
+      if (market.open) market.update(rawDt);
       enemies.update(dt, player, combat);
     } else {
       if (state === 'intro' && stateT > 2.3) { state = 'playing'; document.body.classList.remove('cine'); hud.show(true); }
@@ -726,12 +811,14 @@ async function boot() {
   btn.disabled = false; btn.querySelector('.mi-desc').textContent = 'Infiltra la base y llega al almacén';
   $('btn-mp').disabled = false;
   $('btn-armory').disabled = false;
+  $('btn-market').disabled = false;
+  refreshProfile();
   $('btn-survival').disabled = false;
   if (params.get('sala')) lobby.open(params.get('sala'));
   if (DEBUG) $('fps-counter').classList.remove('hidden');
 
   window.__game = {
-    ready: false, profile, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, loot, useMap,
+    ready: false, profile, progress: { award, session, prestige }, market, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, loot, useMap,
     get world() { return world; },
     get mode() { return mode; },
     start: startMission,

@@ -54,7 +54,7 @@ export function createRooms({ fixedCode = '' } = {}) {
     return {
       code: room.code, host: room.host, phase: room.phase, settings: room.settings, score: room.score,
       left: room.endsAt ? Math.max(0, room.endsAt - Date.now()) : 0, // ms que quedan de partida (0 = sin límite)
-      players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, playing: p.playing, k: p.k, d: p.d })),
+      players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, playing: p.playing, k: p.k, d: p.d, pr: p.pr, lv: p.lv })),
     };
   }
 
@@ -70,6 +70,13 @@ export function createRooms({ fixedCode = '' } = {}) {
     let name = base;
     for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base.slice(0, 13)} ${n}`;
     return name;
+  }
+
+  // Prestigio y nivel que dice tener el jugador ([prestigio, nivel]): sólo se muestran, así que basta acotarlos.
+  function setRank(c, rank) {
+    const n = (v, lo, hi) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.floor(v))) : lo);
+    c.pr = n(rank?.[0], 0, 10);
+    c.lv = n(rank?.[1], 1, 25);
   }
 
   // ---------- Botín ----------
@@ -110,9 +117,10 @@ export function createRooms({ fixedCode = '' } = {}) {
     return count;
   }
 
-  function joinRoom(c, room, rawName) {
+  function joinRoom(c, room, rawName, rank) {
     const count = teamCounts(room);
     c.name = cleanName(rawName, room);
+    setRank(c, rank);
     c.team = count[1] < count[0] ? 1 : 0; // al equipo con menos gente
     c.room = room;
     resetPlayer(c, false);
@@ -209,7 +217,7 @@ export function createRooms({ fixedCode = '' } = {}) {
         if (room || (fixedCode && rooms.size)) return;
         const r = { code: fixedCode || newCode(), host: c.id, phase: 'lobby', players: new Map(), settings: { ...DEFAULTS }, score: [0, 0], barrels: new Set(), endsAt: 0, chests: [], items: new Map(), nextItem: 1 };
         rooms.set(r.code, r);
-        joinRoom(c, r, m.name);
+        joinRoom(c, r, m.name, m.rank);
         break;
       }
       case 'join': {
@@ -217,7 +225,13 @@ export function createRooms({ fixedCode = '' } = {}) {
         const r = rooms.get(String(m.code ?? '').trim().toUpperCase());
         if (!r) return fail(c, 'No existe ninguna sala con ese código');
         if (r.players.size >= r.settings.teamSize * 2) return fail(c, 'La sala está llena');
-        joinRoom(c, r, m.name);
+        joinRoom(c, r, m.name, m.rank);
+        break;
+      }
+      case 'rank': { // ha subido de nivel o de prestigio
+        if (!room) return;
+        setRank(c, m.rank);
+        broadcastRoom(room);
         break;
       }
       case 'team': {
@@ -297,7 +311,7 @@ export function createRooms({ fixedCode = '' } = {}) {
 
   return {
     connect(sendFn) {
-      return { send: sendFn, id: nextId++, name: '', team: 0, room: null, playing: false, state: null, dead: false, k: 0, d: 0 };
+      return { send: sendFn, id: nextId++, name: '', pr: 0, lv: 1, team: 0, room: null, playing: false, state: null, dead: false, k: 0, d: 0 };
     },
     message,
     disconnect: leaveRoom,

@@ -45,7 +45,7 @@ export class Net {
     this.link = null; // conexión con la sala: { send(msg), close() }
     this.direct = false; // true si la sala la lleva el navegador del anfitrión
     this.id = 0;
-    // { code, host, phase, settings: { goal, ff }, score: [alfa, bravo], players: [{ id, name, team, playing, k, d }] }
+    // { code, host, phase, settings: { goal, ff }, score: [alfa, bravo], players: [{ id, name, team, playing, k, d, pr, lv }] }
     this.room = null;
     // joined(), room(), start(msg), snap(list), hit(msg), kill(msg), fire(id, datos), barrel(i, by), end(msg), error(msg), close(aviso)
     // y del botín: loot(msg) (se abre un cofre), take(msg) (alguien recoge un objeto), chests(lista)
@@ -102,8 +102,10 @@ export class Net {
 
   send(msg) { this.link?.send?.(msg); }
 
-  async create(name) { await this.open(); this.send({ t: 'create', name }); }
-  async join(code, name) { await this.open(code); this.send({ t: 'join', code, name }); }
+  // rank: [prestigio, nivel], para que los demás lo vean junto al nombre.
+  async create(name, rank) { await this.open(); this.send({ t: 'create', name, rank }); }
+  async join(code, name, rank) { await this.open(code); this.send({ t: 'join', code, name, rank }); }
+  setRank(rank) { this.send({ t: 'rank', rank }); }
   setTeam(team) { this.send({ t: 'team', team }); }
   set(settings) { this.send({ t: 'set', s: settings }); }
   enter() { this.send({ t: 'enter' }); }
