@@ -22,6 +22,7 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 cpSync(join(ROOT, 'css'), join(OUT, 'css'), { recursive: true });
 cpSync(join(ROOT, 'src'), join(OUT, 'src'), { recursive: true, filter: (f) => !f.endsWith('package.json') });
+cpSync(join(ROOT, 'ads.txt'), join(OUT, 'ads.txt')); // vendedores autorizados de anuncios (AdSense)
 
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 const map = /<script type="importmap">[\s\S]*?<\/script>/;
