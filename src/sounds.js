@@ -239,6 +239,83 @@ export function installSounds(proto) {
     }
   });
 
+  // ---------- Botín y curación (partidas en línea) ----------
+  // Vuelta de venda: roce de tela. La última, el tirón al cortarla.
+  def('bandage', function (last) {
+    const out = this._out(rand(-0.15, 0.05), 0.03, 0.3);
+    const p = rand(0.9, 1.15);
+    if (last) {
+      this.noise(out, { type: 'bandpass', f0: 2600 * p, f1: 1200, q: 1.4, peak: 0.5, attack: 0.005, decay: 0.09 });
+      this.noise(out, { type: 'highpass', f0: 5000, peak: 0.18, decay: 0.05, delay: 0.02 });
+    } else this.noise(out, { type: 'bandpass', f0: 1500 * p, f1: 2400 * p, q: 1.1, peak: 0.32, attack: 0.08, decay: 0.2, pink: true });
+  });
+
+  // Botiquín por fases: 0 cierres y tapa, 1 coger el autoinyector, 2 pinchazo con siseo, 3 dejarlo, 4 cerrar.
+  def('medkit', function (stage) {
+    const out = this._out(rand(-0.08, 0.08), 0.04, 0.34);
+    if (stage === 0 || stage === 4) {
+      for (const d of [0, 0.07]) this.noise(out, { type: 'bandpass', f0: 3200, q: 4, peak: 0.35, decay: 0.025, delay: d });
+      this.noise(out, { type: 'lowpass', f0: 900, peak: 0.3, decay: 0.08, delay: stage === 4 ? 0.12 : 0.16, pink: true });
+    } else if (stage === 1 || stage === 3) {
+      this.noise(out, { type: 'bandpass', f0: 1800, q: 2, peak: 0.25, attack: 0.01, decay: 0.07 });
+      this.tone(out, { type: 'triangle', f0: 620, peak: 0.05, decay: 0.06, delay: 0.02 });
+    } else {
+      this.noise(out, { type: 'bandpass', f0: 4200, q: 6, peak: 0.4, decay: 0.03 }); // clic del muelle
+      this.noise(out, { type: 'highpass', f0: 3000, f1: 6000, peak: 0.16, attack: 0.05, decay: 0.9, delay: 0.03 }); // siseo
+    }
+  });
+
+  // Curación completada: dos notas suaves que suben.
+  def('healed', function () {
+    const out = this._out(0, 0.15, 0.22);
+    this.tone(out, { type: 'sine', f0: 660, peak: 0.3, attack: 0.01, decay: 0.25 });
+    this.tone(out, { type: 'sine', f0: 990, peak: 0.25, attack: 0.01, decay: 0.35, delay: 0.09 });
+  });
+
+  // Ponerse un chaleco: velcro y el golpe sordo de las placas.
+  def('vestOn', function () {
+    const out = this._out(0, 0.05, 0.4);
+    this.noise(out, { type: 'bandpass', f0: 2200, f1: 3400, q: 1.5, peak: 0.4, attack: 0.02, decay: 0.22 });
+    this.noise(out, { type: 'lowpass', f0: 500, peak: 0.45, decay: 0.09, delay: 0.24, pink: true });
+    this.tone(out, { type: 'sine', f0: 520, peak: 0.12, attack: 0.01, decay: 0.3, delay: 0.3 });
+    this.tone(out, { type: 'sine', f0: 780, peak: 0.1, attack: 0.01, decay: 0.35, delay: 0.38 });
+  });
+
+  // El chaleco se rompe: crujido de placa y un tono que cae.
+  def('armorBreak', function () {
+    const out = this._out(0, 0.08, 0.45);
+    this.noise(out, { type: 'bandpass', f0: 2600, f1: 900, q: 1.2, peak: 0.6, decay: 0.16 });
+    for (let i = 0; i < 4; i++) this.noise(out, { type: 'highpass', f0: 3500, peak: rand(0.1, 0.25), decay: 0.02, delay: rand(0.02, 0.12) });
+    this.tone(out, { type: 'triangle', f0: 700, f1: 260, peak: 0.18, decay: 0.3 });
+  });
+
+  // Recoger vendas o un botiquín.
+  def('pickup', function () {
+    const out = this._out(0, 0.04, 0.3);
+    this.noise(out, { type: 'bandpass', f0: 1600, q: 1.2, peak: 0.3, attack: 0.01, decay: 0.08, pink: true });
+    this.tone(out, { type: 'triangle', f0: 1180, peak: 0.12, decay: 0.08, delay: 0.05 });
+  });
+
+  // Cofre que se abre (en el mundo): bisagra, golpe de la tapa y un acorde brillante.
+  def('chestOpen', function (x, y, z) {
+    const s = this.spatial(x, y, z, 5);
+    if (s.gain < 0.05) return;
+    const out = this._out(s.pan, 0.15, s.gain * 0.75);
+    this.noise(out, { type: 'bandpass', f0: 700, f1: 1300, q: 5, peak: 0.25, attack: 0.04, decay: 0.2 }); // bisagra
+    this.noise(out, { type: 'lowpass', f0: 600, peak: 0.6, decay: 0.12, delay: 0.22, pink: true });
+    for (const [f, d] of [[784, 0.18], [988, 0.24], [1319, 0.3], [1568, 0.38]]) this.tone(out, { type: 'sine', f0: f, peak: 0.2, attack: 0.01, decay: 0.7, delay: d });
+  });
+
+  // Brillo de un cofre lleno cercano: unas notas agudas y suaves.
+  def('chestHum', function (x, y, z) {
+    const s = this.spatial(x, y, z, 3);
+    if (s.gain < 0.12) return;
+    const out = this._out(s.pan, 0.3, s.gain * 0.18);
+    const base = [1568, 1760, 2093, 2349][Math.floor(rand(0, 4))];
+    this.tone(out, { type: 'sine', f0: base, peak: 0.25, attack: 0.08, decay: 0.9 });
+    this.tone(out, { type: 'sine', f0: base * 1.5, peak: 0.12, attack: 0.1, decay: 0.8, delay: 0.12 });
+  });
+
   def('uiClick', function () {
     const out = this._out(0, 0.05, 0.25);
     this.tone(out, { type: 'triangle', f0: 880, f1: 440, peak: 0.4, decay: 0.07 });

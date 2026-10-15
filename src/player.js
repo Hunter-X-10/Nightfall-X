@@ -1,7 +1,7 @@
 // Controlador en primera persona: movimiento con inercia, sprint, agacharse, salto, cobertura (al agacharse
 // junto a un obstáculo) con asomarse a los lados, balanceo de cabeza, retroceso de cámara, resistencia para el
-// sprint, deslizamiento (agacharse esprintando), trepar obstáculos bajos, salud con regeneración y el bloqueo
-// durante un remate con el cuchillo.
+// sprint, deslizamiento (agacharse esprintando), trepar obstáculos bajos, salud con regeneración, chaleco y el
+// bloqueo durante un remate con el cuchillo.
 import * as THREE from 'three';
 import { angleDelta, clamp, damp, lerp, smoothstep } from './utils.js';
 import { BASE, ROAD, SPAWN } from './layout.js';
@@ -59,7 +59,7 @@ export class Player {
   constructor(camera, col, events) {
     this.camera = camera;
     this.col = col;
-    this.events = events; // { step(surface, loud), land(v), hurt(amount), death(), exhausted(), slide(surface), vault(surface) }
+    this.events = events; // { step(surface, loud), land(v), hurt(amount), death(), exhausted(), slide(surface), vault(surface), armorBreak() }
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
     this.sensitivity = 1;
@@ -83,6 +83,7 @@ export class Player {
     this.moving = false;
     this.speed = 0;
     this.health = 100;
+    this.armor = 0; // chaleco (0 a ARMOR_MAX): recibe el daño antes que la vida
     this.stamina = 1;
     this.exhausted = false;
     this.restT = 0; // segundos sin gastar resistencia
@@ -135,8 +136,14 @@ export class Player {
 
   addShake(a) { this.shake = Math.min(1.2, this.shake + a); }
 
-  damage(amount, fromX, fromZ) {
+  // El chaleco se lleva el daño primero, salvo con `pierce` (la puñalada rápida, que deja la vida en lo justo).
+  damage(amount, fromX, fromZ, pierce = false) {
     if (this.dead || this.invulnerable || this.lock) return;
+    if (this.armor > 0 && !pierce) {
+      const took = Math.min(this.armor, amount);
+      this.armor -= took; amount -= took;
+      if (this.armor <= 0) { this.armor = 0; this.events.armorBreak?.(); }
+    }
     this.health -= amount;
     this.lastHurt = this.time;
     this.addShake(0.25);

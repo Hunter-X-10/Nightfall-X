@@ -233,7 +233,8 @@ export class RemotePlayers {
       p.vault = damp(p.vault, vaulting ? 1 : 0, 14, dt);
       const leanBits = (flags >> LEAN_SHIFT) & 3;
       p.lean = damp(p.lean, dead ? 0 : leanBits === 1 ? -1 : leanBits === 2 ? 1 : 0, 10, dt);
-      p.aim = damp(p.aim, flags & FLAG.SPRINT || dead ? 0 : 1, 8, dt);
+      // Esprintando o con vendas o botiquín en la mano, el arma va bajada.
+      p.aim = damp(p.aim, flags & (FLAG.SPRINT | FLAG.ITEM) || dead ? 0 : 1, 8, dt);
       p.aimPitch = r.pitch;
       p.flinchX = damp(p.flinchX, 0, 7, dt); p.flinchY = damp(p.flinchY, 0, 7, dt);
       p.death = dead ? Math.min(1, p.death + dt / 0.75) : 0;

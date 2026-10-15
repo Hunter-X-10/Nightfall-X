@@ -1,9 +1,11 @@
 // Armas del jugador: fusil, pistola y cuchillo. Selección con animación de cambio, disparo por raycast
 // (o tajo cuerpo a cuerpo), dispersión, retroceso, recarga animada, balanceo, linterna y golpe rápido
-// con el cuchillo (tecla V): puñalada de lado o remate por la espalda.
+// con el cuchillo (tecla V): puñalada de lado o remate por la espalda. En línea, además, vendas y botiquín
+// (huecos 4 y 5): se cogen del suelo, se sacan como un arma y se usan con el clic.
 import * as THREE from 'three';
-import { buildViewModel, buildPistolModel, buildKnifeModel, buildGrabHand, SIGHT_Y, PISTOL_SIGHT_Y } from './viewmodel.js';
+import { buildViewModel, buildPistolModel, buildKnifeModel, buildGrabHand, buildBandageModel, buildMedkitModel, SIGHT_Y, PISTOL_SIGHT_Y, WRAP_LEN } from './viewmodel.js';
 import { TAKEDOWN_STAB, TAKEDOWN_TIME } from './enemyModel.js';
+import { ITEM, ITEM_MAX } from './loot.js';
 import { Charm, loadCharms } from './charms.js';
 import { FRAME } from './sprites.js';
 import { tracer } from './fxRecipes.js';
@@ -11,10 +13,12 @@ import { clamp, damp, lerp, rand, smoothstep as ss } from './utils.js';
 
 export const VM_SCALE = 0.4;
 export const LIGHT_POWER = 70;
-export const RIFLE = 0; export const PISTOL = 1; export const KNIFE = 2;
+export const RIFLE = 0; export const PISTOL = 1; export const KNIFE = 2; export const BANDAGE = 3; export const MEDKIT = 4;
+export const ARMS = 3; // las tres primeras son armas; las que siguen, objetos de curación
 
-// Cada arma, en el orden de la barra (teclas 1, 2 y 3). Dispersiones en grados; `hip`/`ads` son la
+// Cada arma, en el orden de la barra (teclas 1 a 5). Dispersiones en grados; `hip`/`ads` son la
 // posición del modelo desde la cadera y apuntando. El daño de cada una está en combat.js.
+// Las de curación llevan `heal` (tipo de ITEM), `useTime` (segundos) y `amount` (vida que dan).
 export const WEAPONS = [
   {
     name: 'MK-18 CQBR · AUTO', label: 'FUSIL', mag: 30, reserve: 150, interval: 60 / 720, auto: true, reloadTime: 2.35,
@@ -31,7 +35,19 @@ export const WEAPONS = [
     spreadHip: 0.5, spreadAds: 0.5, moveHip: 0.6, moveAds: 0.6, heatHip: 0, heatAds: 0,
     zoom: 0, speed: 1.12, hip: [0.118, -0.118, -0.275], ads: [0.118, -0.118, -0.275],
   },
+  {
+    name: 'VENDAS', label: 'VENDAS', heal: ITEM.BANDAGE, useTime: 2.5, amount: 50, interval: 0,
+    spreadHip: 0.5, spreadAds: 0.5, moveHip: 0.6, moveAds: 0.6, heatHip: 0, heatAds: 0,
+    zoom: 0, speed: 1, hip: [0.01, -0.058, -0.42], ads: [0.01, -0.058, -0.42],
+  },
+  {
+    name: 'BOTIQUÍN', label: 'BOTIQUÍN', heal: ITEM.MEDKIT, useTime: 5, amount: 100, interval: 0,
+    spreadHip: 0.5, spreadAds: 0.5, moveHip: 0.6, moveAds: 0.6, heatHip: 0, heatAds: 0,
+    zoom: 0, speed: 1, hip: [0.01, -0.115, -0.52], ads: [0.01, -0.115, -0.52],
+  },
 ];
+const HEAL_SPEED = 0.55; // curándose se anda despacio (y no se puede esprintar)
+const HEAL_SLOT = [BANDAGE, MEDKIT]; // hueco de cada tipo de ITEM que se guarda
 
 const SWAP_DOWN = 0.15; const SWAP_UP = 0.22; // segundos para bajar un arma y subir la siguiente
 const SWING_TIME = 0.4; const SWING_HIT = 0.32; // duración del tajo y momento (0-1) en que alcanza
@@ -54,18 +70,27 @@ const _u = new THREE.Vector3();
 const _m = new THREE.Vector3();
 const _e = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _fwd = new THREE.Vector3(0, 0, -1);
+const _z = new THREE.Vector3(0, 0, 1);
+const _up = new THREE.Vector3(0, 1, 0);
+const _c = new THREE.Vector3();
+const _mx = new THREE.Matrix4();
 
 export class Weapon {
   constructor(camera, surf, fx, audio) {
     this.camera = camera;
     this.fx = fx;
     this.audio = audio;
-    this.root = new THREE.Group(); // contiene los tres modelos; sólo se ve el del arma en mano
-    this.slots = [buildViewModel(surf), buildPistolModel(surf), buildKnifeModel(surf)].map((vm, i) => {
+    this.root = new THREE.Group(); // contiene todos los modelos; sólo se ve el del arma en mano
+    const models = [buildViewModel(surf), buildPistolModel(surf), buildKnifeModel(surf), buildBandageModel(surf), buildMedkitModel(surf)];
+    this.slots = models.map((vm, i) => {
       vm.root.scale.setScalar(VM_SCALE);
       this.root.add(vm.root);
-      return { def: WEAPONS[i], vm, mag: 0, reserve: 0 };
+      return { def: WEAPONS[i], vm, mag: 0, reserve: 0, count: 0 }; // count: vendas o botiquines que se llevan
     });
+    this.onNotice = null; // aviso breve en pantalla (texto): sin vendas, vida al máximo…
     camera.add(this.root);
     // Golpe rápido: cuchillo en la mano derecha (con el antebrazo hacia abajo, ver buildKnifeModel) y mano
     // izquierda libre, que agarra a la víctima en los remates.
@@ -86,7 +111,7 @@ export class Weapon {
     camera.add(this.fill);
     this.lightDir = new THREE.Vector3();
     this.lightPos = new THREE.Vector3();
-    this.allowed = WEAPONS.map(() => true); // armas disponibles (lo decide el ajuste de la partida)
+    this.allowed = WEAPONS.map((w) => w.heal === undefined); // armas disponibles (lo decide el ajuste de la partida)
     this.cur = RIFLE;
     this.charms = this.slots.map(() => null); // llavero de cada arma (null = ninguno)
     loadCharms().forEach((id, i) => this.setCharm(i, id));
@@ -133,21 +158,40 @@ export class Weapon {
   get slot() { return this.slots[this.cur]; }
   get def() { return this.slots[this.cur].def; }
   get vm() { return this.slots[this.cur].vm; }
-  // Munición del arma en mano (null con el cuchillo).
-  get mag() { return this.def.melee ? null : this.slot.mag; }
-  get reserve() { return this.def.melee ? null : this.slot.reserve; }
+  // ¿Lleva en la mano un arma de fuego? (no el cuchillo, ni vendas o botiquín)
+  get gun() { return !this.def.melee && this.def.heal === undefined; }
+  // Munición del arma en mano (null si no es de fuego).
+  get mag() { return this.gun ? this.slot.mag : null; }
+  get reserve() { return this.gun ? this.slot.reserve : null; }
+  // Arma que se dice a los demás jugadores: con vendas o botiquín en la mano, la última que se llevaba.
+  get netWeapon() { return this.def.heal === undefined ? this.cur : this.lastGun; }
 
-  // Limita las armas disponibles: 0 todas, 1 pistola y cuchillo, 2 sólo cuchillo.
-  allow(mode) {
-    this.allowed = WEAPONS.map((_, i) => i >= mode);
+  // Limita las armas disponibles: 0 todas, 1 pistola y cuchillo, 2 sólo cuchillo. `items`: hay vendas y
+  // botiquín (solo en línea).
+  allow(mode, items = false) {
+    this.allowed = WEAPONS.map((w, i) => (w.heal === undefined ? i >= mode : items));
+  }
+
+  // ¿Se puede sacar la del hueco `i`? Las vendas y el botiquín, solo si se lleva alguno.
+  usable(i) { const s = this.slots[i]; return this.allowed[i] && (s.def.heal === undefined || s.count > 0); }
+
+  // Vendas o botiquines que se llevan (tipo de ITEM) y añadir uno (devuelve false si ya se llevan ITEM_MAX).
+  itemCount(type) { return this.slots[HEAL_SLOT[type]].count; }
+  addItem(type) {
+    const s = this.slots[HEAL_SLOT[type]];
+    if (s.count >= ITEM_MAX) return false;
+    s.count++;
+    return true;
   }
 
   // Bits de las armas disponibles (para la barra del HUD).
   get allowedMask() { return this.allowed.reduce((m, ok, i) => m | (ok ? 1 << i : 0), 0); }
 
   reset() {
-    for (const s of this.slots) { s.mag = s.def.mag || 0; s.reserve = s.def.reserve || 0; }
+    for (const s of this.slots) { s.mag = s.def.mag || 0; s.reserve = s.def.reserve || 0; s.count = 0; }
     const first = this.allowed.indexOf(true);
+    this.lastGun = first; // última arma (no de curación) que se llevaba
+    this.use = null; // curación en curso: { t, time, cue }
     this.pending = -1; // arma a la que se está cambiando
     this.drawT = 0; // 0 = arma arriba, 1 = bajada del todo (cambio de arma)
     this.reloading = false;
@@ -182,13 +226,19 @@ export class Weapon {
   // Pone un arma en mano sin animación.
   show(i) {
     this.cur = i;
+    if (WEAPONS[i].heal === undefined) this.lastGun = i;
     this.slots.forEach((s, k) => { s.vm.root.visible = k === i; });
     this.charms[i]?.rest();
   }
 
-  // Pide cambiar de arma: baja la actual, cambia y sube la nueva.
+  // Pide cambiar de arma: baja la actual, cambia y sube la nueva. Corta la recarga y la curación.
   select(i) {
-    if (this.quick || !this.allowed[i] || i === (this.pending >= 0 ? this.pending : this.cur)) return;
+    if (this.quick || i === (this.pending >= 0 ? this.pending : this.cur)) return;
+    if (!this.usable(i)) {
+      if (this.allowed[i]) this.onNotice?.(`SIN ${WEAPONS[i].label}`);
+      return;
+    }
+    this.use = null;
     this.reloading = false; this.reloadT = 0;
     this.swingT = 1; this.swingDone = true;
     this.pending = i === this.cur ? -1 : i;
@@ -197,7 +247,7 @@ export class Weapon {
 
   startReload() {
     const s = this.slot;
-    if (s.def.melee || this.reloading || s.mag >= s.def.mag || s.reserve <= 0) return;
+    if (!this.gun || this.reloading || s.mag >= s.def.mag || s.reserve <= 0) return;
     this.reloading = true;
     this.reloadT = 0;
     this.reloadStage = 0;
@@ -211,16 +261,16 @@ export class Weapon {
     if (this.sinceShot > 0.3) this.burst = 0;
     const dead = player.dead;
 
-    // --- Cambio de arma: teclas 1-3 o rueda del ratón (Q y E son para asomarse a cubierto) ---
+    // --- Cambio de arma: teclas 1-5 o rueda del ratón (Q y E son para asomarse a cubierto) ---
     const wheel = input.consumeWheel();
     if (!dead) {
       const n = this.slots.length;
       let want = -1;
       for (let i = 0; i < n; i++) if (input.hit(`Digit${i + 1}`)) want = i;
       if (wheel) {
-        // Siguiente arma disponible en el sentido de la rueda.
+        // Siguiente arma disponible en el sentido de la rueda (salta los huecos de curación vacíos).
         want = this.pending >= 0 ? this.pending : this.cur;
-        do want = (want + wheel + n) % n; while (!this.allowed[want]);
+        do want = (want + wheel + n) % n; while (!this.usable(want));
       }
       if (want >= 0) this.select(want);
     }
@@ -230,22 +280,25 @@ export class Weapon {
     } else if (this.drawT > 0) this.drawT = Math.max(0, this.drawT - dt / SWAP_UP);
     const ready = this.pending < 0 && this.drawT < 0.35 && !player.vault; // trepando no se dispara
 
-    // --- Golpe rápido con V ---
-    if (dead) this.quick = null;
-    this.quickTarget = !dead && ready && !this.quick ? game.quickTarget() : null;
+    // --- Golpe rápido con V (no con vendas o botiquín en la mano) ---
+    if (dead) { this.quick = null; this.use = null; }
+    this.quickTarget = !dead && ready && !this.quick && this.def.heal === undefined ? game.quickTarget() : null;
     if (this.quickTarget && input.hit('KeyV')) this.startQuick(player, game);
     if (this.quick) this.updateQuick(dt, player, game);
 
     const def = this.def;
     const slot = this.slot;
     player.aimZoom = def.zoom;
-    player.speedK = def.speed;
-    this.aiming = !dead && ready && !this.quick && input.aim && !def.melee && !this.reloading && !player.sprinting;
+    player.speedK = this.use ? HEAL_SPEED : def.speed;
+    this.aiming = !dead && ready && !this.quick && input.aim && this.gun && !this.reloading && !player.sprinting;
     if (!dead && ready && !this.quick) {
       if (input.hit('KeyR')) this.startReload();
       if (!input.fire) { this.dryLatch = false; this.fireLatch = false; }
-      // El cuchillo se puede usar a la carrera; las armas de fuego, no.
-      if (input.fire && !this.reloading && (def.melee || this.sprintT < 0.4)) {
+      // Vendas y botiquín: un clic empieza a usarlos (no hace falta mantenerlo).
+      if (def.heal !== undefined) {
+        if (input.fire && !this.fireLatch && !this.use) { this.fireLatch = true; this.startHeal(player); }
+      } else if (input.fire && !this.reloading && (def.melee || this.sprintT < 0.4)) {
+        // El cuchillo se puede usar a la carrera; las armas de fuego, no.
         if (def.melee) { if (this.cool <= 0) this.swing(); }
         else if (slot.mag > 0) {
           // Semiautomática: un disparo por pulsación.
@@ -254,6 +307,7 @@ export class Weapon {
       }
     }
     if (!dead && input.hit('KeyF')) { this.lightOn = !this.lightOn; this.audio.uiClick(); }
+    if (this.use) this.updateHeal(dt, player);
     if (this.reloading) this.updateReload(dt);
     if (this.swingT < 1) {
       this.swingT = Math.min(1, this.swingT + dt / SWING_TIME);
@@ -440,6 +494,116 @@ export class Weapon {
     root.rotation.set(0.15 - 0.6 * away, -0.35, -0.25);
   }
 
+  // ---------- Vendas y botiquín ----------
+  startHeal(player) {
+    if (player.health >= 100) { this.onNotice?.('VIDA AL MÁXIMO'); return; }
+    this.use = { t: 0, time: this.def.useTime, cue: 0 };
+  }
+
+  // Se cura al terminar. Se corta al cambiar de arma (select), al trepar o al morir. Si era el último, se
+  // vuelve a la última arma.
+  updateHeal(dt, player) {
+    const u = this.use; const def = this.def;
+    if (def.heal === undefined || this.pending >= 0 || player.vault || player.lock) { this.use = null; return; }
+    u.t += dt;
+    // Sonidos a lo largo de la animación (ver poseHeal).
+    const cues = def.heal === ITEM.MEDKIT ? [0.02, 0.95, 1.55, 3.85, 4.35] : [0.2, 0.55, 0.9, 1.25, 1.6, 2.05];
+    while (u.cue < cues.length && u.t >= cues[u.cue]) {
+      if (def.heal === ITEM.MEDKIT) this.audio.medkit(u.cue); else this.audio.bandage(u.cue === cues.length - 1);
+      if (def.heal === ITEM.MEDKIT && u.cue === 2) player.addShake(0.1);
+      u.cue++;
+    }
+    if (u.t < u.time) return;
+    player.health = Math.min(100, player.health + def.amount);
+    this.slot.count--;
+    this.use = null;
+    this.audio.healed();
+    if (this.slot.count <= 0) this.select(this.usable(this.lastGun) ? this.lastGun : this.allowed.indexOf(true));
+  }
+
+  // Pose de las vendas o el botiquín. `t`: segundos de uso (-1 si solo se llevan en la mano).
+  poseHeal(vm, kind, t) {
+    const breath = Math.sin(this.time * 1.55) * 0.002;
+    if (kind === ITEM.BANDAGE) {
+      // La mano derecha lleva el rollo a la muñeca izquierda, da vueltas alrededor y tira para cortar.
+      const u = Math.max(0, t);
+      const go = t < 0 ? 0 : ss(0, 0.25, u) * (1 - ss(2.05, 2.4, u));
+      const wind = t < 0 ? 0 : ss(0.2, 2.0, u); // vueltas dadas (0-1)
+      const pull = t < 0 ? 0 : ss(1.95, 2.12, u) * (1 - ss(2.12, 2.4, u));
+      vm.leftArm.position.set(0.01 * go, 0.015 * go + breath, -0.01 * go);
+      vm.leftArm.rotation.set(0.1 * go, 0, 0.1 * go);
+      // Muñeca y codo izquierdos en el espacio del modelo; el rollo da vueltas alrededor de ese eje, cada vez
+      // un poco más arriba del antebrazo (donde va creciendo la venda).
+      vm.leftArm.updateMatrix(); vm.hand.updateMatrix();
+      _a.copy(vm.wristPt).applyMatrix4(vm.hand.matrix).applyMatrix4(vm.leftArm.matrix);
+      _b.copy(vm.elbowPt).applyMatrix4(vm.hand.matrix).applyMatrix4(vm.leftArm.matrix).sub(_a).normalize(); // eje
+      _a.addScaledVector(_b, 0.01 + wind * WRAP_LEN * 0.7);
+      _c.crossVectors(_b, _up).normalize(); // perpendiculares al eje
+      _e.crossVectors(_c, _b);
+      const ang = wind * Math.PI * 2 * 3.5 + 1.2;
+      const r = 0.07;
+      // Reposo: el rollo junto a la mano izquierda. Enrollando: alrededor del antebrazo.
+      const tx = _a.x + (_c.x * Math.cos(ang) + _e.x * Math.sin(ang)) * r;
+      const ty = _a.y + (_c.y * Math.cos(ang) + _e.y * Math.sin(ang)) * r;
+      const tz = _a.z + (_c.z * Math.cos(ang) + _e.z * Math.sin(ang)) * r;
+      // El rollo va unos centímetros por delante del puño (ver buildBandageModel).
+      vm.rightArm.position.set(lerp(0.075, tx, go) + 0.04 * pull, lerp(-0.02, ty - 0.004, go) - 0.02 * pull + breath, lerp(-0.01, tz + 0.03, go) + 0.03 * pull);
+      vm.rightArm.rotation.set(-0.3 + 0.15 * go * Math.sin(ang), 0.5 - 0.15 * go, -0.25 + 0.35 * go * Math.cos(ang));
+      vm.wrap.scale.y = Math.max(0.0001, wind * WRAP_LEN);
+      vm.wrap.visible = wind > 0.01;
+      // Tira del rollo a la muñeca mientras se enrolla.
+      vm.strip.visible = wind > 0.01 && go > 0.5 && pull < 0.6;
+      if (vm.strip.visible) {
+        vm.rightArm.updateMatrix();
+        _a.addScaledVector(_b, -0.006); // la tira entra por el borde de la venda ya puesta
+        _b.copy(vm.rollPt).applyMatrix4(vm.rightArm.matrix);
+        vm.strip.position.copy(_b);
+        const len = Math.max(0.001, _a.distanceTo(_b));
+        vm.strip.quaternion.setFromUnitVectors(_z, _a.sub(_b).divideScalar(len));
+        vm.strip.scale.set(1, 1, len);
+      }
+      return;
+    }
+    // Botiquín. Tiempos (s): tapa 0-0,6 · coger el autoinyector 0,5-1,05 · llevarlo al antebrazo 1,05-1,55 ·
+    // pinchar 1,55-3,4 · devolverlo 3,4-3,95 · mano al asa 3,95-4,4 · cerrar 4,25-4,85.
+    const u = t < 0 ? -1 : t;
+    const lid = u < 0 ? 0 : ss(0.02, 0.55, u) * (1 - ss(4.25, 4.85, u));
+    vm.lid.rotation.x = -1.95 * lid;
+    vm.leftArm.position.set(0, breath + (u < 0 ? 0 : 0.012 * ss(1.0, 1.5, u) * (1 - ss(3.4, 3.9, u))), 0);
+    vm.leftArm.rotation.set(0, 0, u < 0 ? 0 : -0.12 * ss(1.0, 1.5, u) * (1 - ss(3.4, 3.9, u)));
+    const reach = u < 0 ? 0 : ss(0.5, 0.95, u) * (1 - ss(3.95, 4.4, u)); // la mano deja el borde
+    const lift = u < 0 ? 0 : ss(1.05, 1.55, u) * (1 - ss(3.4, 3.95, u)); // con el inyector, hacia el brazo
+    const press = u < 0 ? 0 : ss(1.5, 1.6, u) * (1 - ss(3.3, 3.45, u));
+    const holding = u >= 0.98 && u < 3.92;
+    // Antebrazo izquierdo (donde se pincha) en el espacio del modelo.
+    vm.leftArm.updateMatrix(); vm.lh.updateMatrix();
+    _b.copy(vm.armPt).applyMatrix4(vm.lh.matrix).applyMatrix4(vm.leftArm.matrix);
+    // Al pinchar, la punta del inyector (-Z del puño, a 10 cm) entra de lado, desde la derecha: así el antebrazo
+    // derecho queda abajo a la derecha.
+    _a.set(-0.9, -0.3, -0.25).normalize();
+    const reachK = 0.1 - 0.014 * press;
+    const arm = [_b.x - _a.x * reachK, _b.y - _a.y * reachK, _b.z - _a.z * reachK];
+    // Borde derecho del maletín (reposo) y sobre el hueco del inyector (con el agarre del puño, `grip`, justo
+    // donde descansa el inyector, para que no salte al cogerlo).
+    const rest = [0.14, 0.004, -0.03]; const slot = [0.05, 0.04, 0.025];
+    const px = lerp(lerp(rest[0], slot[0], reach), arm[0], lift);
+    const py = lerp(lerp(rest[1], slot[1], reach), arm[1], lift) + breath + 0.03 * Math.sin(Math.PI * lift);
+    const pz = lerp(lerp(rest[2], slot[2], reach), arm[2], lift);
+    _q.setFromUnitVectors(_fwd, _a);
+    vm.rightArm.quaternion.identity().slerp(_q, lift);
+    vm.rightArm.position.set(px, py, pz);
+    // El autoinyector, en el puño o en su hueco.
+    const inj = vm.injector;
+    if (holding) {
+      vm.rightArm.updateMatrix();
+      _mx.multiplyMatrices(vm.rightArm.matrix, vm.grip);
+      _mx.decompose(inj.position, inj.quaternion, _b.set(1, 1, 1));
+    } else {
+      inj.position.copy(inj.userData.rest);
+      inj.quaternion.identity();
+    }
+  }
+
   updateReload(dt) {
     const s = this.slot;
     this.reloadT += dt;
@@ -461,7 +625,7 @@ export class Weapon {
 
   updatePose(dt, player, dead) {
     const def = this.def; const vm = this.vm;
-    const aim = def.melee ? 0 : player.aimT;
+    const aim = this.gun ? player.aimT : 0;
     this.sprintT = damp(this.sprintT, player.sprinting && !this.reloading ? 1 : 0, 9, dt);
     this.crouchT = damp(this.crouchT, player.crouching ? 1 : 0, 8, dt);
     this.lowerT = damp(this.lowerT, dead ? 1 : 0, 5, dt);
@@ -507,7 +671,7 @@ export class Weapon {
       if (this.cur !== KNIFE) { px -= 0.05 * handOut; py -= 0.12 * handOut; pz += 0.03 * handOut; rz += 0.22 * handOut; rx -= 0.3 * handOut; ry += 0.05 * handOut; }
       else { py -= 0.35 * handOut; rx -= 0.7 * handOut; }
     }
-    if (this.cur !== KNIFE) {
+    if (this.cur !== KNIFE && def.heal === undefined) {
       vm.rightArm.position.set(0.03 * handOut, -0.3 * handOut, 0.1 * handOut);
       vm.rightArm.visible = handOut < 0.98;
     }
@@ -561,6 +725,11 @@ export class Weapon {
       vm.mag.position.y = magY;
       vm.leftArm.position.y = ly;
       vm.slide.position.z = slideBack;
+    } else if (def.heal !== undefined) {
+      // Vendas o botiquín: algo más alto y centrado mientras se usan.
+      const using = this.use ? ss(0, 0.3, this.use.t) : 0;
+      py += 0.02 * using; px -= 0.015 * using; rx += 0.08 * using;
+      this.poseHeal(vm, def.heal, this.use ? this.use.t : -1);
     } else {
       // Cuchillo: punta adelantada hacia el centro; el tajo cruza la vista de derecha a izquierda.
       rx += 0.22; ry += 0.34; rz += 0.3 - this.crouchT * 0.07;

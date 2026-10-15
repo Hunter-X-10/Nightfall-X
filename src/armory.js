@@ -1,7 +1,7 @@
 // Armería: pantalla del menú para elegir el llavero de cada arma. El arma elegida se expone en la
 // escena, a la derecha del panel (ver Weapon.showcase), y la elección se guarda en el navegador.
 import { CHARMS, loadCharms, saveCharms } from './charms.js';
-import { WEAPONS } from './weapon.js';
+import { WEAPONS, ARMS } from './weapon.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,7 +13,7 @@ export class Armory {
     this.slot = 0; // arma que se está viendo (índice de WEAPONS)
     this.picks = loadCharms();
 
-    this.tabs = WEAPONS.map((w, i) => {
+    this.tabs = WEAPONS.slice(0, ARMS).map((w, i) => { // sin vendas ni botiquín
       const b = document.createElement('button');
       b.className = 'btn ghost small';
       b.textContent = w.label;

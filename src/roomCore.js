@@ -4,6 +4,9 @@
 // del anfitrión cuando el juego se aloja como página estática (src/p2p.js, de navegador a navegador).
 // La sala no simula nada: quien dispara decide el impacto, la víctima aplica el daño y avisa de su
 // muerte, y la sala lleva la cuenta de bajas y decide cuándo termina la partida.
+// También reparte el botín (src/loot.js): qué cofres hay, qué sale de cada uno, qué deja cada caído y quién
+// se lleva cada objeto (el primero que lo pide).
+import { CHEST_SPOTS, CHEST_REFILL_MS, ITEM, ITEM_LIFE_MS, chestCount, lootSpots, rollLoot } from './loot.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin O/0 ni I/1 para dictar el código sin errores
 const CODE_LEN = 4;
@@ -18,6 +21,7 @@ const DEAD = 16; // bit de "abatido" en el estado de cada jugador (ver FLAG en s
 const DEFAULTS = { map: 0, goal: 20, time: 0, teamSize: MAX_TEAM, respawn: 3, weapons: 0, ff: false };
 const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const weaponId = (w) => (w === 1 || w === 2 ? w : 0); // 0 fusil, 1 pistola, 2 cuchillo
+const r2 = (v) => Math.round(v * 100) / 100;
 
 export function randomCode() {
   let code = '';
@@ -68,6 +72,34 @@ export function createRooms({ fixedCode = '' } = {}) {
     return name;
   }
 
+  // ---------- Botín ----------
+  // Cofres: [{ s: sitio (índice de CHEST_SPOTS del mapa), open, at: cuándo vuelve a tener botín }].
+  // Objetos en el suelo: id -> { d: [id, tipo, x, y, z], until }.
+  const chestList = (room) => room.chests.map((ch) => [ch.s, ch.open ? 1 : 0]);
+  const lootInfo = (room) => ({ chests: chestList(room), items: [...room.items.values()].map((it) => it.d) });
+
+  // Pone cofres hasta tener uno por jugador en partida (o el mínimo, CHEST_MIN), en sitios libres al azar. Devuelve si ha puesto alguno.
+  function addChests(room) {
+    const spots = CHEST_SPOTS[room.settings.map] || [];
+    const playing = [...room.players.values()].filter((p) => p.playing).length;
+    const want = Math.min(spots.length, chestCount(playing));
+    const used = new Set(room.chests.map((ch) => ch.s));
+    const free = spots.map((_, i) => i).filter((i) => !used.has(i));
+    let added = false;
+    while (room.chests.length < want && free.length) {
+      room.chests.push({ s: free.splice(Math.floor(Math.random() * free.length), 1)[0], open: false, at: 0 });
+      added = true;
+    }
+    return added;
+  }
+
+  function newItem(room, type, x, y, z) {
+    const id = room.nextItem++;
+    const d = [id, type, r2(x), r2(y), r2(z)];
+    room.items.set(id, { d, until: Date.now() + ITEM_LIFE_MS });
+    return d;
+  }
+
   function resetPlayer(c, playing) {
     c.playing = playing; c.state = null; c.dead = false; c.k = 0; c.d = 0;
   }
@@ -105,6 +137,7 @@ export function createRooms({ fixedCode = '' } = {}) {
     room.endsAt = 0;
     relay(room, { t: 'end', winner, room: roomInfo(room) });
     room.phase = 'lobby';
+    room.chests = []; room.items.clear();
     for (const p of room.players.values()) { p.playing = false; p.state = null; p.dead = false; }
     broadcastRoom(room);
   }
@@ -138,7 +171,10 @@ export function createRooms({ fixedCode = '' } = {}) {
           killer.k += enemy ? 1 : -1; // matar a un compañero resta
           if (enemy) room.score[killer.team]++;
         }
-        relay(room, { t: 'kill', by: killer ? killer.id : 0, id: c.id, head: m.part === 1, w: weaponId(m.w) });
+        // Deja en el suelo unas vendas o un chaleco, mitad y mitad.
+        const s = c.state;
+        const drop = s ? newItem(room, Math.random() < 0.5 ? ITEM.BANDAGE : ITEM.VEST, s[0], s[1], s[2]) : null;
+        relay(room, { t: 'kill', by: killer ? killer.id : 0, id: c.id, head: m.part === 1, w: weaponId(m.w), drop });
         const winner = room.score.findIndex((s) => s >= room.settings.goal);
         if (winner >= 0) endMatch(room, winner); else broadcastRoom(room);
         break;
@@ -151,9 +187,27 @@ export function createRooms({ fixedCode = '' } = {}) {
         room.barrels.add(m.i);
         relay(room, { t: 'bar', i: m.i, by: Number.isInteger(m.by) ? m.by : 0 }, c);
         break;
+      case 'open': { // abrir un cofre (índice en room.chests): sale el botín y cae por delante
+        if (!room || room.phase !== 'playing' || !c.playing || c.dead || !Number.isInteger(m.c)) return;
+        const ch = room.chests[m.c];
+        if (!ch || ch.open) return;
+        ch.open = true; ch.at = Date.now() + CHEST_REFILL_MS;
+        const types = rollLoot();
+        const at = lootSpots(CHEST_SPOTS[room.settings.map][ch.s], types.length);
+        relay(room, { t: 'loot', c: m.c, by: c.id, items: types.map((type, i) => newItem(room, type, at[i][0], 0, at[i][1])) });
+        break;
+      }
+      case 'take': { // recoger un objeto del suelo: se lo lleva el primero que lo pide
+        if (!room || room.phase !== 'playing' || !c.playing || c.dead) return;
+        const it = room.items.get(m.id);
+        if (!it) return;
+        room.items.delete(m.id);
+        relay(room, { t: 'take', id: m.id, by: c.id, k: it.d[1] });
+        break;
+      }
       case 'create': {
         if (room || (fixedCode && rooms.size)) return;
-        const r = { code: fixedCode || newCode(), host: c.id, phase: 'lobby', players: new Map(), settings: { ...DEFAULTS }, score: [0, 0], barrels: new Set(), endsAt: 0 };
+        const r = { code: fixedCode || newCode(), host: c.id, phase: 'lobby', players: new Map(), settings: { ...DEFAULTS }, score: [0, 0], barrels: new Set(), endsAt: 0, chests: [], items: new Map(), nextItem: 1 };
         rooms.set(r.code, r);
         joinRoom(c, r, m.name);
         break;
@@ -195,11 +249,16 @@ export function createRooms({ fixedCode = '' } = {}) {
           room.phase = 'playing'; room.score = [0, 0]; room.barrels.clear();
           room.endsAt = room.settings.time > 0 ? Date.now() + room.settings.time * 60000 : 0;
           for (const p of room.players.values()) resetPlayer(p, true);
-          const info = roomInfo(room);
-          for (const p of room.players.values()) send(p, { t: 'start', room: info, barrels: [] });
+          room.chests = []; room.items.clear();
+          addChests(room);
+          const info = roomInfo(room); const loot = lootInfo(room);
+          for (const p of room.players.values()) send(p, { t: 'start', room: info, barrels: [], loot });
         } else if (!c.playing) {
           resetPlayer(c, true);
-          send(c, { t: 'start', room: roomInfo(room), barrels: [...room.barrels] });
+          // Quien llega a una partida empezada trae su cofre; los demás se enteran.
+          const more = addChests(room);
+          send(c, { t: 'start', room: roomInfo(room), barrels: [...room.barrels], loot: lootInfo(room) });
+          if (more) relay(room, { t: 'chests', c: chestList(room) }, c);
         }
         broadcastRoom(room);
         break;
@@ -221,6 +280,12 @@ export function createRooms({ fixedCode = '' } = {}) {
         endMatch(room, a === b ? -1 : a > b ? 0 : 1);
         continue;
       }
+      // Cofres que vuelven a tener botín y objetos que llevan demasiado en el suelo.
+      const now = Date.now();
+      let refill = false;
+      for (const ch of room.chests) if (ch.open && now >= ch.at) { ch.open = false; refill = true; }
+      if (refill) relay(room, { t: 'chests', c: chestList(room) });
+      for (const [id, it] of room.items) if (now >= it.until) { room.items.delete(id); relay(room, { t: 'take', id, by: 0, k: it.d[1] }); }
       const d = [];
       for (const p of room.players.values()) {
         const s = p.state;

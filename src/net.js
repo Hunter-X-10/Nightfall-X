@@ -8,8 +8,9 @@ export const TEAM_COLORS = ['#6fb6ff', '#ff7a5c'];
 
 // Bits de estado que acompañan a la posición de cada jugador. DEAD lo fija el servidor. LOCK (bit 10): está
 // rematando a alguien con el cuchillo y no se le puede dañar. SLIDE (bit 11): se está deslizando.
-// VAULT (bit 12): está saltando un obstáculo o subiéndose a él.
-export const FLAG = { CROUCH: 1, SPRINT: 2, AIM: 4, LIGHT: 8, DEAD: 16, SHIELD: 32, LOCK: 1024, SLIDE: 2048, VAULT: 4096 };
+// VAULT (bit 12): está saltando un obstáculo o subiéndose a él. ITEM (bit 13): lleva en la mano unas vendas o
+// un botiquín (los bits del arma siguen diciendo cuál es la última que llevaba).
+export const FLAG = { CROUCH: 1, SPRINT: 2, AIM: 4, LIGHT: 8, DEAD: 16, SHIELD: 32, LOCK: 1024, SLIDE: 2048, VAULT: 4096, ITEM: 8192 };
 export const WEAPON_SHIFT = 6; // los bits 6 y 7 llevan el arma en mano (índice de WEAPONS)
 export const LEAN_SHIFT = 8; // los bits 8 y 9, hacia dónde se asoma: 0 nada, 1 izquierda, 2 derecha
 // Zona del cuerpo alcanzada por un disparo.
@@ -47,6 +48,7 @@ export class Net {
     // { code, host, phase, settings: { goal, ff }, score: [alfa, bravo], players: [{ id, name, team, playing, k, d }] }
     this.room = null;
     // joined(), room(), start(msg), snap(list), hit(msg), kill(msg), fire(id, datos), barrel(i, by), end(msg), error(msg), close(aviso)
+    // y del botín: loot(msg) (se abre un cofre), take(msg) (alguien recoge un objeto), chests(lista)
     this.handlers = {};
   }
 
@@ -86,6 +88,9 @@ export class Net {
       case 'hit': h.hit?.(m); break;
       case 'kill': h.kill?.(m); break;
       case 'bar': h.barrel?.(m.i, m.by); break;
+      case 'loot': h.loot?.(m); break;
+      case 'take': h.take?.(m); break;
+      case 'chests': h.chests?.(m.c); break;
       case 'joined': this.id = m.id; this.room = m.room; h.joined?.(); break;
       case 'room': this.room = m.room; h.room?.(); break;
       case 'start': this.room = m.room; h.start?.(m); break;
@@ -115,6 +120,9 @@ export class Net {
   died(by, part, w) { this.send({ t: 'died', by, part, w }); }
   spawned() { this.send({ t: 'spawn' }); }
   barrel(i, by) { this.send({ t: 'bar', i, by }); }
+  // Botín: abrir el cofre `i` (índice en la lista de la partida) y pedir un objeto del suelo.
+  openChest(i) { this.send({ t: 'open', c: i }); }
+  take(id) { this.send({ t: 'take', id }); }
 
   // Abandona la sala a propósito (no dispara el aviso de conexión perdida).
   leave() {

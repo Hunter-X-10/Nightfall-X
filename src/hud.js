@@ -1,18 +1,26 @@
-// HUD minimalista en DOM: cruceta dinámica, marcador de impacto, munición, barra de armas, vida, objetivo y brújula.
+// HUD minimalista en DOM: cruceta dinámica, marcador de impacto, munición, barra de armas, vida, chaleco,
+// objetivo y brújula.
 import * as THREE from 'three';
 import { TEAMS } from './net.js';
 import { WEAPONS } from './weapon.js';
+import { ARMOR_MAX, ITEM_MAX } from './loot.js';
 import { clamp } from './utils.js';
 
 const $ = (id) => document.getElementById(id);
 const PX_PER_DEG = 3.6;
 const FEED_MAX = 5;
 const FEED_MS = 6000;
-// Siluetas de la barra de armas (fusil, pistola, cuchillo), en un lienzo de 64 x 24.
+// Siluetas de la barra de armas (fusil, pistola, cuchillo, vendas, botiquín), en un lienzo de 64 x 24.
 const ICONS = [
-  '2,9 13,9 15,7 40,7 40,5 45,5 45,7 62,7 62,10 46,10 44,12 36,12 33,21 28,21 30,12 22,12 20,17 15,17 16,12 2,13',
-  '14,6 50,6 50,11 36,11 34,14 28,14 25,22 17,22 20,11 14,11',
-  '4,13 30,7 38,7 38,10 60,10 60,15 38,15 38,17 30,17 14,16',
+  '<polygon points="2,9 13,9 15,7 40,7 40,5 45,5 45,7 62,7 62,10 46,10 44,12 36,12 33,21 28,21 30,12 22,12 20,17 15,17 16,12 2,13"/>',
+  '<polygon points="14,6 50,6 50,11 36,11 34,14 28,14 25,22 17,22 20,11 14,11"/>',
+  '<polygon points="4,13 30,7 38,7 38,10 60,10 60,15 38,15 38,17 30,17 14,16"/>',
+  // Dos rollos de venda atados.
+  '<path fill-rule="evenodd" d="M23 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17zm0 6a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5z'
+    + 'M41 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17zm0 6a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM31 10h2v4h-2z"/>',
+  // Maletín con asa y la cruz recortada.
+  '<path fill-rule="evenodd" d="M27 2h10v4h-2V4h-6v2h-2zM17 6h30a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H17a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3z'
+    + 'M30.5 9.5v3.5H27v3.5h3.5V20h3v-3.5H37V13h-3.5V9.5z"/>',
 ];
 const _v = new THREE.Vector3();
 
@@ -48,7 +56,8 @@ export class HUD {
     this.el = {
       hud: $('hud'), cross: $('crosshair'), hit: $('hitmarker'), dmgDir: $('dmg-dir'), vignette: $('damage-vignette'),
       mag: $('ammo-mag'), res: $('ammo-res'), pips: $('ammo-pips'), hp: $('health-num'), hpFill: $('health-fill'), health: $('health'),
-      sta: $('stamina'), staFill: $('stamina-fill'), quick: $('quick-hint'),
+      sta: $('stamina'), staFill: $('stamina-fill'), quick: $('quick-hint'), use: $('use-hint'), useText: $('use-text'),
+      armor: $('armor'), armorNum: $('armor-num'), armorFill: $('armor-fill'),
       obj: $('objective'), objText: $('objective-text'), objSub: $('objective-sub'), strip: $('compass-strip'), cObj: $('compass-obj'),
       marker: $('obj-marker'), dist: $('obj-dist'), msg: $('center-msg'), kill: $('kill-msg'), fps: $('fps-counter'),
       wname: $('weapon-name'), ammo: $('ammo'), toolbar: $('toolbar'),
@@ -65,10 +74,10 @@ export class HUD {
     this.el.strip.innerHTML = html;
     this.el.pips.innerHTML = '<i></i>'.repeat(30);
     this.pips = [...this.el.pips.children];
-    // Barra de armas: una casilla por arma con su tecla, silueta y munición.
+    // Barra de armas: una casilla por arma con su tecla, silueta y munición (o cuántas vendas o botiquines).
     this.slots = WEAPONS.map((w, i) => {
-      const slot = el('div', 'slot');
-      slot.innerHTML = `<svg viewBox="0 0 64 24" aria-hidden="true"><polygon points="${ICONS[i]}"/></svg>`;
+      const slot = el('div', w.heal !== undefined ? 'slot heal' : 'slot');
+      slot.innerHTML = `<svg viewBox="0 0 64 24" aria-hidden="true">${ICONS[i]}</svg>`;
       const ammo = el('span', 's-ammo');
       slot.append(el('span', 's-key', i + 1), ammo, el('span', 's-name', w.label));
       this.el.toolbar.appendChild(slot);
@@ -107,6 +116,12 @@ export class HUD {
   }
 
   killMsg(text) { this.el.kill.textContent = text; this.killT = 1.6; }
+
+  // Aviso de lo que se puede hacer con F (abrir un cofre, recoger algo). Sin texto se oculta; `full`: no cabe.
+  useHint(text, full = false) {
+    this.set('useText', text, (v) => { if (v) this.el.useText.textContent = v; this.el.use.classList.toggle('on', !!v); });
+    this.set('useFull', full, (v) => this.el.use.classList.toggle('full', v));
+  }
   message(text, time = 1.5) { this.set('msg', text, (v) => { this.el.msg.textContent = v; }); this.msgT = time; }
 
   // ---------- Partida en línea ----------
@@ -157,18 +172,20 @@ export class HUD {
     const crossOn = player.aimT < 0.5 && weapon.sprintT < 0.5 && !player.dead ? 1 : 0;
     this.set('crossOn', crossOn, (v) => { e.cross.style.opacity = v; });
 
-    // Arma en mano: nombre, munición (el cuchillo no tiene) y casilla marcada en la barra.
+    // Arma en mano: nombre, munición (sólo las de fuego) y casilla marcada en la barra.
     const def = weapon.def;
     this.set('weapon', weapon.cur, () => {
-      e.wname.textContent = def.name;
-      e.ammo.classList.toggle('melee', !!def.melee);
+      e.ammo.classList.toggle('melee', !weapon.gun);
       this.pips.forEach((p, i) => { p.style.display = i < (def.mag || 0) ? '' : 'none'; });
       this.cache.mag = undefined; this.cache.res = undefined;
     });
+    this.set('wname', def.heal !== undefined ? `${def.name} · ${weapon.slot.count} / ${ITEM_MAX}` : def.name, (v) => { e.wname.textContent = v; });
     this.set('allowed', weapon.allowedMask, (m) => this.slots.forEach((s, i) => s.slot.classList.toggle('off', !(m & (1 << i)))));
     this.set('slot', weapon.pending >= 0 ? weapon.pending : weapon.cur, (v) => this.slots.forEach((s, i) => s.slot.classList.toggle('on', i === v)));
     weapon.slots.forEach((s, i) => {
-      if (!s.def.melee) this.set(`slotAmmo${i}`, s.mag * 1000 + s.reserve, () => { this.slots[i].ammo.textContent = `${s.mag} / ${s.reserve}`; });
+      if (s.def.heal !== undefined) {
+        this.set(`slotAmmo${i}`, s.count, (v) => { this.slots[i].ammo.textContent = `${v} / ${ITEM_MAX}`; this.slots[i].slot.classList.toggle('empty', v === 0); });
+      } else if (!s.def.melee) this.set(`slotAmmo${i}`, s.mag * 1000 + s.reserve, () => { this.slots[i].ammo.textContent = `${s.mag} / ${s.reserve}`; });
     });
     this.set('mag', weapon.mag, (v) => {
       if (v === null) return;
@@ -182,6 +199,11 @@ export class HUD {
       e.hp.textContent = v;
       e.hpFill.style.width = `${v}%`;
       e.health.classList.toggle('low', v <= 35);
+    });
+    this.set('armor', Math.ceil(player.armor), (v) => {
+      e.armorNum.textContent = v;
+      e.armorFill.style.width = `${(v / ARMOR_MAX) * 100}%`;
+      e.armor.classList.toggle('empty', v <= 0);
     });
     this.set('sta', Math.round(player.stamina * 100), (v) => {
       e.staFill.style.width = `${v}%`;

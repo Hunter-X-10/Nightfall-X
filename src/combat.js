@@ -280,9 +280,10 @@ export class Combat {
   }
 
   // Daño al jugador local causado por otro jugador (`by`, 0 = nadie). Si muere, `source` dice quién fue.
-  hurtPlayer(amount, fromX, fromZ, by = 0, part = 0, w = 0) {
+  // pierce: no pasa por el chaleco (la puñalada rápida).
+  hurtPlayer(amount, fromX, fromZ, by = 0, part = 0, w = 0, pierce = false) {
     this.source.by = by; this.source.part = part; this.source.w = w;
-    this.g.player.damage(amount, fromX, fromZ);
+    this.g.player.damage(amount, fromX, fromZ, pierce);
     this.source.by = 0; this.source.part = 0; this.source.w = 0;
   }
 

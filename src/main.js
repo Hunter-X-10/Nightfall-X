@@ -21,6 +21,8 @@ import { RemotePlayers } from './remotePlayers.js';
 import { Lobby } from './lobby.js';
 import { Armory } from './armory.js';
 import { Survival, loadRecords, fmt } from './survival.js';
+import { LootWorld } from './lootWorld.js';
+import { ARMOR_MAX, ITEM, ITEM_MAX, ITEM_NAMES, PICK_R } from './loot.js';
 import { SPAWN } from './layout.js';
 import { clamp, damp } from './utils.js';
 
@@ -140,6 +142,7 @@ async function boot() {
     exhausted: () => audio.cough(),
     slide: (surface) => audio.slide(surface),
     vault: (surface) => audio.vault(surface),
+    armorBreak: () => audio.armorBreak(),
     hurt: () => { audio.hurt(); hud.damageFrom(player.hurtDir); hurtFlash = 1; },
     death: () => {
       if (mode !== 'online') { endTimer = 2.4; return; }
@@ -150,6 +153,7 @@ async function boot() {
   }));
   player.groundSurface = (x, z, y) => (y > 0.06 ? 'metal' : world.ground.surfaceAt(x, z));
   const weapon = (g.weapon = new Weapon(camera, surf, fx, audio));
+  weapon.onNotice = (text) => hud.message(text, 1.2);
   reflection.hidden.push(weapon.root);
   envHidden.push(weapon.root);
   const enemies = (g.enemies = new Enemies(scene, world.col, fx, audio, surf, world.cover));
@@ -167,6 +171,39 @@ async function boot() {
   let matchEndsAt = 0; // instante (reloj del navegador) en que se agota el tiempo; 0 = sin límite
   const net = (g.net = new Net());
   const remotes = (g.remotes = new RemotePlayers(scene, surf, reflection));
+
+  // ---------- Botín (solo en línea) ----------
+  // Cofres y objetos del suelo (lootWorld.js). Lo que se recoge se pide a la sala, que se lo da al primero
+  // que lo pide (mensaje "take"); mientras tanto no se vuelve a pedir.
+  const loot = (g.loot = new LootWorld(scene, fx, audio));
+  const pending = new Map(); // id del objeto -> instante en que se pidió
+  const canTake = (type) => (type === ITEM.VEST ? player.armor < ARMOR_MAX : weapon.itemCount(type) < ITEM_MAX);
+  const requestTake = (it) => { if (!pending.has(it.id)) { pending.set(it.id, time); net.take(it.id); } };
+  // La sala nos ha dado un objeto: el chaleco se pone solo (o se deja nuevo); vendas y botiquín se guardan.
+  const gotItem = (type) => {
+    if (type === ITEM.VEST) { player.armor = ARMOR_MAX; audio.vestOn(); hud.message('CHALECO PUESTO', 1.2); }
+    else if (weapon.addItem(type)) { audio.pickup(); hud.message(`+1 ${ITEM_NAMES[type]}`, 1.2); }
+  };
+  // Cada fotograma en línea, antes de weapon.update (que usa F para la linterna): se recoge lo que se pisa y,
+  // si se mira un cofre o un objeto, F lo abre o lo recoge en lugar de encender la linterna.
+  const updateLoot = () => {
+    for (const [id, t] of pending) if (time - t > 1.5) pending.delete(id);
+    if (state !== 'playing' || player.dead || matchEnd || menuOpen) { hud.useHint(''); return; }
+    for (const it of loot.near(player.pos.x, player.pos.y, player.pos.z, PICK_R)) if (canTake(it.type)) requestTake(it);
+    const tg = loot.target(camera);
+    if (!tg) { hud.useHint(''); return; }
+    const f = input.hit('KeyF');
+    if (f) input.pressed.delete('KeyF');
+    if (tg.kind === 'chest') {
+      hud.useHint('ABRIR COFRE');
+      if (f) net.openChest(tg.i);
+      return;
+    }
+    const type = tg.item.type;
+    const ok = canTake(type);
+    hud.useHint(ok ? `RECOGER ${ITEM_NAMES[type]}` : type === ITEM.VEST ? 'CHALECO COMPLETO' : `${ITEM_NAMES[type]} AL MÁXIMO`, !ok);
+    if (ok && f) requestTake(tg.item);
+  };
 
   const post = new PostFX(renderer);
   let quality = 'auto'; let scale = 1; let lastDrop = -99;
@@ -269,6 +306,8 @@ async function boot() {
     combat.mission = !online;
     combat.survival = m === 'survival';
     if (m !== 'survival') survival.stop();
+    if (!online) { loot.clear(); pending.clear(); }
+    hud.useHint('');
     $('btn-restart').classList.toggle('hidden', online);
     $('btn-restart').textContent = m === 'survival' ? 'REINICIAR' : 'REINICIAR MISIÓN';
     $('btn-leave').textContent = online ? 'SALIR DE LA PARTIDA' : 'SALIR AL MENÚ';
@@ -296,15 +335,17 @@ async function boot() {
     useMap(0);
     weapon.allow(0);
     begin(SPAWN);
+    player.armor = ARMOR_MAX; // se empieza con el chaleco puesto
     hud.objective('Infiltra la base: cruza el control de acceso', 'Linterna: F');
   };
 
-  // Supervivencia en el mapa `id`: oleadas sin fin (ver survival.js).
+  // Supervivencia en el mapa `id`: oleadas sin fin (ver survival.js). Se empieza con el chaleco puesto.
   const startSurvival = (id) => {
     setMode('survival');
     useMap(id);
     weapon.allow(0);
     begin(survival.startSpot(id));
+    player.armor = ARMOR_MAX;
     survival.start(id);
   };
   // Volver a jugar al mismo modo (pantalla final y botón de reinicio de la pausa).
@@ -340,10 +381,12 @@ async function boot() {
   const startOnline = (m) => {
     setMode('online');
     useMap(net.room.settings.map);
-    weapon.allow(net.room.settings.weapons);
+    weapon.allow(net.room.settings.weapons, true);
     remotes.sync(net.room.players, net.id);
     begin(pickSpawn(net.me.team));
     combat.clearBarrels(m.barrels);
+    loot.start(m.loot || {}, net.room.settings.map, world.col);
+    pending.clear();
     shield();
     hud.objective(net.room.code, onlineStatus());
     refreshScore();
@@ -404,17 +447,27 @@ async function boot() {
     snap: (list) => { if (mode === 'online') remotes.onSnap(list, net.id); },
     fire: (id, d) => { if (mode === 'online' && !matchEnd) combat.remoteShot(id, d); },
     barrel: (i, by) => { if (mode === 'online') combat.remoteBarrel(i, by); },
+    // Botín: un cofre abierto (por cualquiera), un objeto que se lleva alguien y la lista de cofres.
+    loot: (m) => { if (mode === 'online') loot.onLoot(m.c, m.items); },
+    take: (m) => {
+      if (mode !== 'online') return;
+      loot.remove(m.id);
+      pending.delete(m.id);
+      if (m.by === net.id && !player.dead) gotItem(m.k);
+    },
+    chests: (list) => { if (mode === 'online') loot.setChests(list); },
     // Otro jugador nos ha alcanzado: el daño se aplica aquí y, si es mortal, se avisa al servidor.
-    // k = 1 es la puñalada rápida: deja la vida en STAB_LEFT, o mata si ya había menos.
+    // k = 1 es la puñalada rápida: deja la vida en STAB_LEFT, o mata si ya había menos (el chaleco no la para).
     hit: (m) => {
       if (mode !== 'online' || matchEnd) return;
       const r = remotes.get(m.by);
       const dmg = m.k === 1 ? (player.health > STAB_LEFT ? player.health - STAB_LEFT : 200) : m.dmg;
-      combat.hurtPlayer(dmg, r ? r.x : player.pos.x, r ? r.z : player.pos.z, m.by, m.part, m.w);
+      combat.hurtPlayer(dmg, r ? r.x : player.pos.x, r ? r.z : player.pos.z, m.by, m.part, m.w, m.k === 1);
     },
     // Baja confirmada por el servidor.
     kill: (m) => {
       if (mode !== 'online') return;
+      if (m.drop) loot.drop(m.drop); // lo que deja el caído (vendas o chaleco)
       const who = (id) => net.room.players.find((p) => p.id === id);
       const killer = who(m.by); const victim = who(m.id);
       if (!victim) return;
@@ -564,11 +617,12 @@ async function boot() {
       enemies.update(dt, player, combat);
     } else {
       if (state === 'intro' && stateT > 2.3) { state = 'playing'; document.body.classList.remove('cine'); hud.show(true); }
-      player.update(dt, input, weapon.aiming, !weapon.reloading);
+      player.update(dt, input, weapon.aiming, !weapon.reloading && !weapon.use);
       camera.updateMatrixWorld();
+      if (mode === 'online') updateLoot();
       weapon.update(dt, input, player, combat);
       enemies.update(dt, player, combat);
-      player.regen(dt);
+      if (mode !== 'online') player.regen(dt); // en línea la vida sólo se recupera con vendas o botiquín
       combat.update(dt);
       if (mode === 'survival' && state !== 'ended') survival.update(dt);
       if (mode === 'online') {
@@ -585,7 +639,8 @@ async function boot() {
           if (sendT >= SEND_INTERVAL) {
             sendT = 0;
             const flags = (player.crouching ? FLAG.CROUCH : 0) | (player.sprinting ? FLAG.SPRINT : 0) | (weapon.aiming ? FLAG.AIM : 0)
-              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (player.lock ? FLAG.LOCK : 0) | (player.sliding ? FLAG.SLIDE : 0) | (player.vault ? FLAG.VAULT : 0) | (weapon.cur << WEAPON_SHIFT)
+              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (player.lock ? FLAG.LOCK : 0) | (player.sliding ? FLAG.SLIDE : 0) | (player.vault ? FLAG.VAULT : 0)
+              | (weapon.netWeapon << WEAPON_SHIFT) | (weapon.def.heal !== undefined ? FLAG.ITEM : 0)
               | ((player.lean < -0.12 ? 1 : player.lean > 0.12 ? 2 : 0) << LEAN_SHIFT);
             net.sendState(player.pos.x, player.pos.y, player.pos.z, player.yaw, player.pitch, flags);
           }
@@ -619,6 +674,7 @@ async function boot() {
         if (rh) focus = rh.player.id;
       }
       remotes.update(dt, camera, net.me.team, focus);
+      loot.update(dt, camera);
     }
     if (frame % world.env.shadowEvery === 0 || fl > 0.01) moon.shadow.needsUpdate = true;
 
@@ -671,7 +727,7 @@ async function boot() {
   if (DEBUG) $('fps-counter').classList.remove('hidden');
 
   window.__game = {
-    ready: false, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, useMap,
+    ready: false, player, weapon, enemies, combat, survival, input, post, camera, scene, renderer, weather, fx, audio, net, remotes, armory, loot, useMap,
     get world() { return world; },
     get mode() { return mode; },
     start: startMission,

@@ -62,6 +62,19 @@ Parámetros útiles en la URL:
   - **Puñalada**: la mano derecha suelta el arma (que se queda en la izquierda, bajada y ladeada), baja a la cintura, sale con el cuchillo y apuñala. Deja al rival con `STAB_LEFT` (30) de vida, o lo mata si ya tenía menos. No bloquea.
   - El cuchillo de estas animaciones es un modelo aparte (`weapon.quickKnife`, con el antebrazo hacia abajo para que la manga no se corte con el plano cercano de la cámara). Mientras dura, la linterna baja a `QUICK_LIGHT` y sube la luz de relleno (`QUICK_FILL`): de noche, si no, o se quema a blanco o no se ve nada.
   - En la misión, la IA agarrada se congela (`enemies.grab`, `e.td`) y muere con la puñalada. En línea la víctima muere al empezar el remate, para que la latencia no le deje escapar. Solo quien remata ve la animación (`remotes.takedown`, `r.td`); la víctima y los demás ven una muerte normal.
+- **Chaleco** (todos los modos): `player.armor` (0 a `ARMOR_MAX`, 50, en `src/loot.js`) recibe el daño antes que la vida (`player.damage`); con `pierce` no (la puñalada rápida, que deja la vida en 30). Al romperse suena `audio.armorBreak`. Barra azul encima de la vida (`#armor`).
+  - Misión y supervivencia: se empieza con el chaleco puesto y la vida se recupera sola, como siempre. En supervivencia el chaleco se recarga entero en los 2 primeros segundos de cada descanso. No hay cofres, vendas ni botiquines.
+  - En línea se empieza sin chaleco y **la vida no se recupera sola** (`player.regen` solo fuera de línea): solo con vendas o botiquín.
+- **Botín en línea**, con el diseño del usuario: cofres tipo Fortnite, vendas, botiquines y chalecos.
+  - `src/loot.js` (sin three.js, lo importa también la sala): tipos `ITEM` (0 vendas, 1 botiquín, 2 chaleco), `CHEST_SPOTS` (16 sitios por mapa, `[x, z, giro]`, con la espalda contra algo y sitio delante), probabilidades (vendas 45 %, botiquín 35 %, chaleco 20 %), `rollLoot` (1 a 3 objetos) y `lootSpots` (dónde caen, en abanico delante del cofre).
+  - La sala (`roomCore.js`) lo decide todo: al empezar pone un cofre por jugador, con un mínimo de 6 (`CHEST_MIN`: con 2 en un 1 contra 1 no se encontraban), en sitios al azar, distintos cada partida; quien entra tarde añade el suyo. `open` abre un cofre y reparte el botín (mensaje `loot`, que ven todos); `take` se lo da al primero que lo pide (mensaje `take` con `by`). El cofre se cierra con botín nuevo al minuto (`CHEST_REFILL_MS`, mensaje `chests`) y lo que nadie coge desaparece a los 2 minutos (`ITEM_LIFE_MS`). Al morir, el caído deja vendas o chaleco, mitad y mitad (`drop` en el mensaje `kill`, en su última posición). `start` lleva `loot: { chests, items }`.
+  - `src/lootWorld.js` lo dibuja, todo instanciado: cofre de madera con herrajes dorados (cuerpo y tapa en madera y en dorado, más el brillo del interior y un halo a cámara mientras está lleno, con destellos de `fx` y un tintineo cercano), objetos flotando y girando con un haz de luz del color de su rareza (blanco, verde y azul). Al abrirse, la tapa sube, hay un destello y los objetos salen volando hasta donde caen. Cada cofre es un colisionador (`surface: 'wood'`, `sight: false`).
+  - Recoger (`main.js`, `updateLoot`, antes de `weapon.update`): al pasar a menos de `PICK_R` (0,9 m) o con F mirándolo. Mirar un cofre cerrado o un objeto muestra `#use-hint` (`F ABRIR COFRE`, `F RECOGER VENDAS`…, o `VENDAS AL MÁXIMO` en gris si no cabe); entonces F abre o recoge en vez de encender la linterna. Lo pedido queda en `pending` 1,5 s para no repetirlo.
+  - El chaleco se pone solo (o se deja entero) y no se guarda; no se coge si ya está entero. Vendas y botiquines se guardan, 2 de cada como mucho (`ITEM_MAX`).
+- **Vendas y botiquín** (solo en línea): huecos 4 y 5 de la barra (`WEAPONS[3]` y `[4]`, con `heal`, `useTime` y `amount`; `ARMS = 3` son las armas de verdad). Vacíos, la barra muestra solo su silueta; fuera de línea no aparecen (`weapon.allow(mode, items)`). `weapon.usable(i)` dice si se pueden sacar; la rueda salta los vacíos.
+  - Se usan con un clic (no hace falta mantenerlo): vendas 2,5 s y +50 de vida; botiquín 5 s y vida entera. No se usan con la vida llena. Mientras, se anda despacio (`HEAL_SPEED`), sin esprintar ni golpe rápido; cambiar de arma, trepar o morir lo corta. Al gastar el último se vuelve a la última arma (`weapon.lastGun`).
+  - Animaciones (`Weapon.poseHeal`, modelos `buildBandageModel` y `buildMedkitModel` de `viewmodel.js`): la mano derecha da 3,5 vueltas con el rollo alrededor del antebrazo izquierdo (calculadas sobre el eje muñeca-codo) y la venda crece (`wrap`), con una tira hasta el rollo (`strip`); el maletín abre la tapa, el puño saca el autoinyector, pincha de lado en el antebrazo izquierdo y lo devuelve. Sonidos `audio.bandage`, `audio.medkit(fase)` y `audio.healed`.
+  - En línea va en el bit 13, `FLAG.ITEM`; los bits del arma llevan `weapon.netWeapon` (la última arma). El soldado remoto baja el arma.
 - **Llaveros**: `src/charms.js` tiene el catálogo `CHARMS`, los modelos y un péndulo movido por la aceleración del arma en el mundo.
   - Se eligen en la armería (`src/armory.js`, botón ARMERÍA del menú). Ahí el arma se expone con `Weapon.showcase()`.
   - Se guardan en `localStorage` (`nightfall.charms`) y solo los ve el propio jugador; no viajan por la red.
@@ -82,6 +95,8 @@ Parámetros útiles en la URL:
   - Bit 10, `FLAG.LOCK`: el jugador está rematando y es inmune. Los demás no pueden darle (`remotes.isImmune`, como con SHIELD, pero sin parpadeo).
   - Bit 11, `FLAG.SLIDE`: se está deslizando (ver Deslizamiento).
   - Bit 12, `FLAG.VAULT`: está trepando (ver Trepar).
+  - Bit 13, `FLAG.ITEM`: lleva vendas o botiquín en la mano (ver Vendas y botiquín).
+  - Botín: mensajes `open`, `take`, `loot`, `chests` y `drop` dentro de `kill` (ver Botín en línea).
   - El mensaje `hit` lleva `k`: con `k = 1` (puñalada rápida) la víctima ignora `dmg` y se queda con `STAB_LEFT` de vida, porque solo ella sabe cuánta le queda (`main.js`, manejador `hit`).
 
 ## Cosas que rompen fácilmente
@@ -89,7 +104,10 @@ Parámetros útiles en la URL:
 - **Zonas de impacto ≠ malla.** Los impactos se calculan con cápsulas a partir de la pose (`raycast` en `remotePlayers.js` y en `enemies.js`), no con la geometría. Puedes cambiar el aspecto de los soldados, pero respeta las alturas de cadera (0,95), hombros y cabeza. No toques los huesos, `ARM_UP`/`ARM_FORE` ni `poseSoldier` sin revisar los raycast.
 - **Asomarse: tres números enlazados.** La cámara local se aparta `LEAN_DIST` (0,38, `player.js`). El soldado remoto lo imita con `LEAN_HIP` (0,15) y `LEAN_SPINE` (0,42 rad) de `enemyModel.js`, porque la cabeza está a 0,57 m del pivote de la columna. Las cápsulas de `remotePlayers.raycast` usan esas mismas constantes. Si cambias uno, recalcula los otros y comprueba que la cápsula de la cabeza sigue centrada en la cabeza del modelo.
 - **Deslizamiento: pose y cápsulas.** `SLIDE_HIP` y `SLIDE_BACK` (`enemyModel.js`) los usan a la vez la pose y `remotePlayers.raycast`. Deslizándose, la cápsula de las piernas va de la cadera al pie estirado, 0,8 m por delante. Si cambias la pose de las piernas, mueve también ese punto.
-- **Teclas Q/E.** Son para asomarse. Q dejó de ser "arma anterior": las armas se cambian con la rueda y 1-2-3. V es el golpe rápido.
+- **Teclas Q/E.** Son para asomarse. Q dejó de ser "arma anterior": las armas se cambian con la rueda y 1-2-3 (4-5 vendas y botiquín, en línea). V es el golpe rápido.
+- **F hace dos cosas.** Enciende la linterna, salvo en línea mirando un cofre o un objeto: entonces abre o recoge. `updateLoot` (`main.js`) se come la pulsación antes de `weapon.update`; si se mueve detrás, F volverá a encender la linterna.
+- **La barra tiene 5 huecos.** `WEAPONS` incluye vendas y botiquín: lo que recorra las armas debe distinguir `def.heal` (o usar `weapon.gun`, que es arma de fuego). La armería solo enseña las `ARMS` primeras. `DAMAGE` (`combat.js`) sigue teniendo 3 entradas: las de curación no disparan.
+- **Sitios de los cofres.** `CHEST_SPOTS` se eligieron con un script (suelo a 0, sin nada en 0,75 m, pared a menos de 1,6 m detrás, frente libre, lejos de las zonas de aparición). Si cambias un mapa cerca de uno, revísalo: el cofre es sólido y su botín cae 1-1,4 m por delante.
 - **Golpe rápido: tiempos compartidos.** `TAKEDOWN_STAB` y `TAKEDOWN_TIME` (`enemyModel.js`) los usan a la vez la animación en primera persona (`weapon.js`), el bloqueo del jugador (`player.js`) y la pose de la víctima (IA y remotos). Cámbialos solo ahí. La pose de la víctima no toca las cápsulas de impacto porque solo se aplica a quien ya no recibe disparos.
 - **Cobertura de La Solana y Muelle Norte.** Antes estos mapas devolvían `cover: []`. Ahora exponen sus nodos para la IA de supervivencia, filtrados igual que en Sector 7. En línea no se usan.
 - **Supervivencia y misión comparten soldados.** `enemies.reset()` (al empezar la misión o volver al menú) los devuelve a todos a su patrulla con `off = false`, y `setMode` llama a `survival.stop()`, que quita `hunt`, `nav` y la dificultad. `useMap` cambia `enemies.col`/`cover`/`lights` al mapa en uso.
@@ -118,6 +136,8 @@ Parámetros útiles en la URL:
    - Caja baja de Sector 7 para probar la cobertura: centro (-10.8, 29.2), 1,25 m de alto. Por ejemplo, `teleport(-9.45, 33.2, 90)`, agacharse y andar con D hasta su esquina. Ojo: hay postes finos cerca que desplazan el teletransporte.
    - Para ver a un jugador remoto fuera de una partida, `remotes.sync([{ id, name, team, playing: true }], 0)` y llamar a `remotes.update` en cada fotograma rellenando `buf`, porque en la misión no se actualizan.
    - Desactiva la linterna (`weapon.lightOn = false`) para capturas de cerca: quema a blanco.
+   - Botín sin más jugadores: con `?autostart=1`, `__game.net.create('X')`, `__game.net.set({ map: 1 })` y `__game.net.enter()` empiezan una partida en línea con 6 cofres (`__game.loot.chests`). Para mirar uno: `teleport(c.x + sin(c.yaw) * 1.6, c.z + cos(c.yaw) * 1.6, c.yaw en grados, -40)`. `__game.loot.drop([id, tipo, x, 0, z])` pone un objeto solo en esa pantalla.
+   - Fases de las vendas o el botiquín: `weapon.addItem(tipo)`, `weapon.show(3 o 4)`, anula `weapon.updateHeal` y fija `weapon.use = { t, time, cue: 99 }` para congelar el instante `t`.
 2. **Modo en línea**: `npm run test:online` tiene que terminar en "Todo correcto".
 3. **Versión publicable**: `npm run build` tiene que generar `dist/` sin errores.
 4. **Rendimiento**: `__game.stats()` da FPS, llamadas de dibujo y triángulos. Ojo: los triángulos por fotograma varían según toque o no actualizar sombras; para comparar, cuenta la geometría de `__game.world.group`.
@@ -172,15 +192,21 @@ Parámetros útiles en la URL:
   - **Deslizamiento** (detalles en Arquitectura). Primero solo se activaba pulsando agacharse en pleno sprint y al usuario le costaba. Lo quiso "parecido al Fortnite": margen de 0,4 s tras soltar el sprint y la pulsación recordada, también en el aire.
   - **Trepar** obstáculos bajos: los salta o se sube encima, con el mismo criterio permisivo.
   - El usuario probó las dos cosas en local y le gustaron.
+- **Sesión del 15 de octubre de 2026 (segunda parte)**: **botiquines y chaleco**, diseñados con el usuario en una entrevista (detalles en Arquitectura: Chaleco, Botín en línea, Vendas y botiquín).
+  - El usuario quiso cofres tipo Fortnite en línea, con F (aviso como el de la V solo al mirarlos), de 1 a 3 objetos con una animación de salida que ven todos y que se rellenan cada minuto. 16 sitios por mapa y tantos cofres como jugadores, en sitios distintos cada partida.
+  - Vendas (las deja el caído, mitad y mitad con el chaleco) y botiquín en los huecos 4 y 5, con silueta si están vacíos; 2 de cada como mucho. Se usan con el clic, como en Fortnite: vendas 2,5 s y media vida, botiquín 5 s y vida entera.
+  - Chaleco de 50, que se lleva el daño primero, se pone solo y no se guarda. En la misión y en supervivencia solo hay chaleco: se empieza con él y, en supervivencia, se recarga al empezar cada descanso.
+  - Decisiones de Claude: en línea la vida ya no se recupera sola (si no, las vendas no tendrían sentido); el cofre se hizo por código y no con un modelo 3D descargado (los gratuitos son de estilo dibujo animado y chocaban con el juego); lo que nadie recoge desaparece a los 2 minutos; la puñalada rápida no la para el chaleco; con vendas o botiquín en la mano no hay golpe rápido.
+  - En el primer 1 contra 1 del usuario no salió ningún cofre: el mínimo era 2 (difíciles de encontrar) y los cambios aún no estaban publicados. Se subió a 6 (`CHEST_MIN`). Lo volvió a probar en local y le pareció "perfecto".
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
   - Pasar la pausa, la armería, las salas y la pantalla final al estilo del menú nuevo (se ofreció; siguen con los botones de antes).
-  - Mecánicas que faltan: solo las cuatro de "Mecánicas pendientes". El siguiente bit libre de `flags` es el 13.
+  - Mecánicas que faltan: solo las granadas (ver "Mecánicas pendientes"). El siguiente bit libre de `flags` es el 14.
 
 ## Mecánicas pendientes
 
-Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia**, **golpe rápido con V**, **supervivencia por oleadas**, **deslizamiento** y **trepar** (ver Arquitectura).
+Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia**, **golpe rápido con V**, **supervivencia por oleadas**, **deslizamiento**, **trepar** y **botiquines y chaleco** (ver Arquitectura).
 
 El 15 de octubre de 2026 el usuario dejó la lista en estas cuatro, en este orden. Todo lo demás del brainstorming está descartado y no hay que volver a proponerlo: supresión, más bidones, disparo a ciegas, saltar y agarrarse, IA más lista, puertas y ventanas, cajas empujables y cobertura pegada al estilo Gears/Division.
 
@@ -188,10 +214,10 @@ El 15 de octubre de 2026 el usuario dejó la lista en estas cuatro, en este orde
 |---|---|---|---|---|
 | 1 | ~~Deslizamiento~~ (hecho el 15 de octubre) | 1-2 h | Baja-media | Sprint + agacharse da un impulso de ~0,8 s que decae. Baja la cámara y se puede disparar mientras dura. Gasta `player.stamina`. Necesita pose remota, cápsulas de impacto, un bit nuevo en `flags`, el arma ladeada y un sonido de roce. |
 | 2 | ~~Trepar obstáculos bajos~~ (hecho el 15 de octubre) | 2-3 h | Media | Detectar delante un obstáculo de 1,2 m o menos (`colliders.js`) y subirlo con una animación corta. Gasta `player.stamina`. Necesita pose remota y otro bit. Cuidado con atravesar paredes o quedarse atascado encima. |
-| 3 | Botiquines y chaleco | 2-3 h | Baja-media | Objetos recogibles por el mapa, una barra de armadura en el HUD y daño absorbido en `player.damage`. En línea la armadura es local porque la víctima ya aplica el daño. Lo delicado es sincronizar quién recoge cada objeto. |
+| 3 | ~~Botiquines y chaleco~~ (hecho el 15 de octubre) | 2-3 h | Baja-media | Objetos recogibles por el mapa, una barra de armadura en el HUD y daño absorbido en `player.damage`. En línea la armadura es local porque la víctima ya aplica el daño. Lo delicado es sincronizar quién recoge cada objeto. |
 | 4 | Granadas (de fragmentación, de humo y cegadora) | 5-8 h | Alta | Lanzamiento con rebotes, daño por radio con línea de visión, humo que tapa la vista de la IA, efecto de la cegadora, animación de lanzar, IA que huye y un mensaje de red nuevo. Reutiliza `particles.js`/`fxRecipes.js`. El daño funciona como con las balas: quien lanza decide y la víctima lo aplica. |
 
-En la sesión del 15 de octubre se hacen el deslizamiento y trepar. Botiquines, chaleco y granadas quedan para otra sesión.
+El 15 de octubre se hicieron el deslizamiento, trepar y los botiquines con el chaleco. Quedan las granadas.
 
 **Al implementarlas**:
 - Cualquier pose nueva (deslizar, trepar) cambia las cápsulas de impacto de `remotePlayers.js` y `enemies.js`.

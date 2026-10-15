@@ -8,6 +8,7 @@ import { RIFLE, PISTOL, KNIFE } from './weapon.js';
 import { SPAWN } from './layout.js';
 import { makeCanvas, tex } from './textures.js';
 import { NavGrid } from './navgrid.js';
+import { ARMOR_MAX } from './loot.js';
 import { rand } from './utils.js';
 
 export const FIRST_WAVE = 4; // enemigos de la primera oleada
@@ -23,6 +24,7 @@ const SPAWN_MIN = 24; const SPAWN_MAX = 65; // distancia al jugador de los punto
 const POINTS = { kill: 100, head: 50, knife: 100, wave: 250 }; // la de oleada se multiplica por su número
 const STORE = 'nightfall.survival';
 const NAV_EVERY = 0.4; // cada cuánto se rehace el camino hacia el jugador (s)
+const ARMOR_REFILL = ARMOR_MAX / 2; // al empezar el descanso, el chaleco se recarga entero en 2 s
 
 // Récords por mapa: { [mapa]: { wave, score } }.
 export function loadRecords() {
@@ -182,7 +184,8 @@ export class Survival {
     audio.objective();
   }
 
-  // Oleada superada: puntos extra, vida al máximo, munición repuesta, bidones otra vez en su sitio y descanso.
+  // Oleada superada: puntos extra, vida al máximo, chaleco nuevo (se recarga en los primeros segundos del
+  // descanso), munición repuesta, bidones otra vez en su sitio y descanso.
   endWave() {
     const { hud, audio, player, weapon, combat } = this.g;
     const bonus = POINTS.wave * this.wave;
@@ -190,6 +193,7 @@ export class Survival {
     this.phase = 'rest';
     this.restT = REST_TIME;
     if (!player.dead) player.health = 100;
+    if (!player.dead && player.armor < ARMOR_MAX) audio.vestOn();
     for (const i of [RIFLE, PISTOL]) {
       const s = weapon.slots[i];
       s.mag = s.def.mag;
@@ -265,6 +269,7 @@ export class Survival {
     if (!player.dead) {
       if (this.phase === 'rest') {
         this.restT -= dt;
+        if (this.wave > 0) player.armor = Math.min(ARMOR_MAX, player.armor + ARMOR_REFILL * dt);
         hud.objectiveSub(`${this.wave ? 'Siguiente oleada' : 'Primera oleada'} en ${Math.max(0, Math.ceil(this.restT))} s · ${fmt(this.score)} pts`);
         if (this.restT <= 0) this.beginWave();
       } else {

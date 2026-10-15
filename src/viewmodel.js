@@ -1,6 +1,6 @@
 // Modelos procedurales de las armas en primera persona: carabina con mira holográfica y linterna,
 // pistola compacta y cuchillo de combate, cada uno con sus manos, más una mano izquierda libre para los
-// remates con el cuchillo. Las piezas con forma (cajón, cargador,
+// remates con el cuchillo, y las vendas y el botiquín de las partidas en línea. Las piezas con forma (cajón, cargador,
 // empuñaduras, culata, armazón) son siluetas laterales extruidas; los dedos, cadenas de cilindros.
 // Unidades reales en metros; el grupo raíz se escala y cuelga de la cámara. -Z = hacia delante.
 import * as THREE from 'three';
@@ -63,8 +63,31 @@ function materials(surf) {
     glove: mk(0x1d2024, 0.8, 0, 0.25),
     pad: mk(0x23262a, 0.55, 0.1, 0.3),
     sleeve: new THREE.MeshStandardMaterial({ color: 0x4d5440, roughness: 0.9, map: surf.tarp.map, normalMap: surf.tarp.normalMap }),
+    // Vendas y botiquín.
+    bandage: new THREE.MeshStandardMaterial({ map: bandageTexture(), roughness: 0.95, metalness: 0 }),
+    kitRed: mk(0xa3231b, 0.45, 0.05, 0.3, grain),
+    kitWhite: mk(0xdedcd6, 0.6, 0, 0.3, grain),
+    foam: mk(0x8d9196, 0.85, 0, 0.3, grain), // interior del botiquín (gris: al sol, el blanco se quema)
+    kitGreen: mk(0x3f6b3a, 0.4, 0.1, 0.3, grain),
+    kitOrange: mk(0xe0701e, 0.45, 0, 0.3, grain),
   };
   return _mat;
+}
+
+// Venda: tejido crudo con las vueltas marcadas en diagonal.
+function bandageTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e9e3d3'; g.fillRect(0, 0, 64, 64);
+  g.strokeStyle = 'rgba(120, 104, 80, 0.35)'; g.lineWidth = 1.2;
+  for (let i = -64; i < 128; i += 9) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 22, 64); g.stroke(); }
+  g.fillStyle = 'rgba(255, 255, 255, 0.25)';
+  for (let i = 0; i < 160; i++) g.fillRect((i * 37) % 64, (i * 23) % 64, 1, 1);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
 }
 
 // Utilidades de construcción: acumulan geometría por material y la fusionan en una malla por material.
@@ -411,7 +434,16 @@ export function buildKnifeModel(surf, forearm = [0.15, -0.26, 0.44]) {
 export function buildGrabHand(surf) {
   const root = new THREE.Group();
   root.name = 'viewmodel-grab';
-  const { mat, put, rbox, finger, flush } = kit(surf);
+  const k = kit(surf);
+  openHand(k, [-0.15, -0.26, 0.47]);
+  k.flush(root);
+  finish(root);
+  return { root };
+}
+
+// Mano izquierda abierta: palma hacia abajo, dedos hacia delante (-Z) doblándose hacia abajo, pulgar por la
+// derecha y reloj en la muñeca. Origen en el centro de la palma; la manga va hasta `elbow`.
+function openHand({ mat, put, rbox, finger }, elbow) {
   rbox(mat.glove, 0.084, 0.03, 0.09, 0, 0, 0, 0, 0, 0, 0.012);
   rbox(mat.pad, 0.056, 0.01, 0.05, -0.004, 0.016, 0.006, 0, 0, 0, 0.004);
   for (let i = 0; i < 4; i++) {
@@ -420,10 +452,144 @@ export function buildGrabHand(surf) {
   }
   finger(mat.glove, [[0.036, -0.008, 0.012], [0.058, -0.026, -0.022], [0.062, -0.052, -0.044]], 0.0108, 0.009); // pulgar
   put(mat.glove, between([0, -0.006, 0.04], [-0.02, -0.03, 0.09], 0.036, 0.037)); // puño del guante
-  put(mat.sleeve, between([-0.012, -0.018, 0.07], [-0.15, -0.26, 0.47], 0.034, 0.056));
+  put(mat.sleeve, between([-0.012, -0.018, 0.07], elbow, 0.034, 0.056));
   rbox(mat.dark, 0.034, 0.009, 0.034, -0.03, 0.012, 0.085, 0, 0, 0.3, 0.003); // reloj
   rbox(mat.black, 0.024, 0.004, 0.024, -0.03, 0.018, 0.085, 0, 0, 0.3, 0.0015);
-  flush(root);
+}
+
+// Mano derecha cerrada, como la del cuchillo: agarre a lo largo de Z (de z = 0 a 0,063), dorso por la derecha,
+// dedos por encima y pulgar sobre lo que sujeta. La manga va hasta `elbow`.
+function fist({ mat, put, rbox, finger }, elbow) {
+  rbox(mat.glove, 0.024, 0.06, 0.084, 0.022, -0.002, 0.03, 0, 0, 0, 0.012);
+  rbox(mat.glove, 0.04, 0.02, 0.08, 0.004, -0.024, 0.03, 0, 0, 0, 0.009);
+  rbox(mat.pad, 0.012, 0.044, 0.05, 0.036, 0.004, 0.03, 0, 0, 0, 0.004);
+  for (let i = 0; i < 4; i++) {
+    const z = i * 0.021;
+    finger(mat.glove, [[0.018, 0.018, z], [0.002, 0.026, z], [-0.016, 0.014, z], [-0.017, -0.01, z], [-0.004, -0.021, z]], 0.0088, 0.008);
+  }
+  finger(mat.glove, [[0.016, 0.014, 0.004], [0.004, 0.026, -0.012], [-0.003, 0.027, -0.03]], 0.0105, 0.009);
+  put(mat.sleeve, between([0.014, -0.03, 0.075], elbow, 0.034, 0.055));
+  put(mat.glove, between([0.008, -0.018, 0.06], [0.026, -0.05, 0.1], 0.036, 0.037));
+}
+
+// ---------- Vendas ----------
+// La mano derecha lleva el rollo y lo enrolla en la muñeca izquierda (ver Weapon.poseHeal). Piezas animadas:
+// leftArm (mano izquierda), rightArm (mano derecha con el rollo), wrap (venda ya puesta, cilindro a lo largo del
+// antebrazo que crece con scale.y), strip (tira entre el rollo y la muñeca, se estira con scale.z).
+export const WRAP_LEN = 0.085; // largo de la venda puesta al terminar
+export function buildBandageModel(surf) {
+  const root = new THREE.Group();
+  root.name = 'viewmodel-bandage';
+  const k = kit(surf);
+  const { mat, put } = k;
+
+  // Mano izquierda, palma abajo y girada para que el antebrazo cruce desde la izquierda con la muñeca a la
+  // vista; la venda se enrolla ahí.
+  const leftArm = new THREE.Group();
+  const hand = new THREE.Group();
+  const elbow = new THREE.Vector3(-0.12, -0.2, 0.34); const wrist = new THREE.Vector3(-0.012, -0.018, 0.075);
+  openHand(k, elbow.toArray());
+  k.flush(hand);
+  hand.rotation.set(0.2, -0.95, 0.25);
+  hand.position.set(-0.035, -0.015, -0.05);
+  leftArm.add(hand);
+  const axis = elbow.clone().sub(wrist).normalize();
+  const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.045, 1, 18, 1).translate(0, 0.5, 0), mat.bandage);
+  wrap.position.copy(wrist).addScaledVector(axis, 0.008);
+  wrap.quaternion.setFromUnitVectors(_y, axis);
+  wrap.scale.y = 0.0001;
+  hand.add(wrap);
+  // Muñeca y codo en el espacio de la mano (la vuelta del rollo se hace alrededor de ese eje).
+  const wristPt = wrist.clone().addScaledVector(axis, 0.012);
+  const elbowPt = elbow.clone();
+  root.add(leftArm);
+
+  // Mano derecha con el rollo cogido con la punta de los dedos.
+  const rightArm = new THREE.Group();
+  fist(k, [0.12, -0.2, 0.22]);
+  put(mat.bandage, new THREE.CylinderGeometry(0.036, 0.036, 0.05, 20), xform(0, 0.006, -0.035, Math.PI / 2, 0, 0));
+  put(mat.foam, new THREE.CylinderGeometry(0.011, 0.011, 0.052, 10), xform(0, 0.006, -0.035, Math.PI / 2, 0, 0)); // alma del rollo
+  k.flush(rightArm);
+  const rollPt = new THREE.Vector3(0, -0.028, -0.035); // donde sale la tira (bajo el rollo)
+  root.add(rightArm);
+
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.0015, 1).translate(0, 0, 0.5), mat.bandage);
+  strip.visible = false;
+  root.add(strip);
+
   finish(root);
-  return { root };
+  return { root, leftArm, rightArm, hand, wrap, strip, wristPt, elbowPt, rollPt };
+}
+
+// ---------- Botiquín ----------
+// Maletín rojo con la cruz blanca, sujeto en horizontal con las dos manos. Al usarlo se abre la tapa, la mano
+// derecha saca el autoinyector, se lo clava en el antebrazo izquierdo y lo vuelve a guardar (Weapon.poseHeal).
+// Piezas animadas: lid (tapa, gira sobre su bisagra trasera), rightArm, leftArm e injector (fuera de la mano
+// va en su hueco de la bandeja; en la mano, sigue a rightArm con `grip`).
+export function buildMedkitModel(surf) {
+  const root = new THREE.Group();
+  root.name = 'viewmodel-medkit';
+  const k = kit(surf);
+  const { mat, put, rbox, box, cylX } = k;
+  const W = 0.27; const D = 0.18; const H = 0.055;
+
+  // Bandeja: el interior es espuma clara con el hueco del autoinyector, gasas y un rollo de esparadrapo.
+  rbox(mat.kitRed, W, H, D, 0, 0, 0, 0, 0, 0, 0.008);
+  box(mat.foam, W - 0.02, 0.004, D - 0.02, 0, H / 2 - 0.0015, 0);
+  box(mat.dark, 0.032, 0.003, 0.12, 0.05, H / 2 + 0.0008, 0); // hueco del autoinyector
+  rbox(mat.kitWhite, 0.07, 0.012, 0.05, -0.07, H / 2 + 0.005, -0.03, 0, 0.15, 0, 0.003);
+  rbox(mat.kitWhite, 0.07, 0.012, 0.05, -0.07, H / 2 + 0.005, 0.035, 0, -0.1, 0, 0.003);
+  put(mat.bandage, new THREE.CylinderGeometry(0.022, 0.022, 0.018, 16), xform(-0.005, H / 2 + 0.009, 0.045));
+  // Asa por delante (hacia la cámara) y cierres.
+  for (const sx of [-1, 1]) {
+    rbox(mat.black, 0.012, 0.016, 0.016, sx * 0.045, 0, D / 2 + 0.006, 0, 0, 0, 0.003);
+    rbox(mat.pad, 0.026, 0.012, 0.008, sx * 0.1, H / 2 - 0.004, D / 2 + 0.003, 0, 0, 0, 0.002);
+  }
+  cylX(mat.black, 0.007, 0.1, 0, -0.004, D / 2 + 0.018, 12);
+  k.flush(root);
+
+  // Tapa con la cruz, articulada en el borde trasero.
+  const lid = new THREE.Group();
+  lid.position.set(0, H / 2, -D / 2);
+  rbox(mat.kitRed, W, 0.03, D, 0, 0.015, D / 2, 0, 0, 0, 0.008);
+  box(mat.kitWhite, 0.1, 0.003, 0.03, 0, 0.0305, D / 2);
+  box(mat.kitWhite, 0.03, 0.003, 0.1, 0, 0.0305, D / 2);
+  box(mat.foam, W - 0.024, 0.003, D - 0.024, 0, -0.0005, D / 2); // forro interior
+  k.flush(lid);
+  root.add(lid);
+
+  // Autoinyector: cuerpo verde, punta naranja hacia -Z y émbolo gris atrás.
+  const injector = new THREE.Group();
+  const { cylZ } = k;
+  cylZ(mat.kitGreen, 0.011, 0.011, 0.085, 0, 0, 0, 16);
+  cylZ(mat.kitOrange, 0.0115, 0.0105, 0.022, 0, 0, -0.053, 16);
+  cylZ(mat.steel, 0.0035, 0.0035, 0.012, 0, 0, -0.07, 8);
+  cylZ(mat.pad, 0.0085, 0.0085, 0.014, 0, 0, 0.049, 12);
+  box(mat.kitWhite, 0.0225, 0.012, 0.03, 0, 0, 0.004); // etiqueta
+  k.flush(injector);
+  injector.position.set(0.05, H / 2 + 0.011, 0);
+  injector.userData.rest = injector.position.clone();
+  root.add(injector);
+
+  // Mano izquierda bajo el lado izquierdo, palma arriba; derecha agarrando el lado derecho.
+  const leftArm = new THREE.Group();
+  const lh = new THREE.Group();
+  const elbow = [0.16, 0.2, 0.3]; // girada media vuelta: la manga acaba yendo abajo a la izquierda
+  openHand(k, elbow);
+  k.flush(lh);
+  lh.rotation.set(0, 0, Math.PI);
+  lh.position.set(-0.1, -H / 2 - 0.018, 0.01);
+  leftArm.add(lh);
+  root.add(leftArm);
+  // Donde se pincha: en el antebrazo izquierdo, algo más allá del puño del guante (espacio de lh).
+  const armPt = new THREE.Vector3(-0.012, -0.018, 0.075).lerp(new THREE.Vector3(...elbow), 0.16);
+  const rightArm = new THREE.Group();
+  fist(k, [0.12, -0.2, 0.22]);
+  k.flush(rightArm);
+  root.add(rightArm);
+  // Dónde queda el autoinyector dentro del puño (espacio de rightArm).
+  const grip = new THREE.Matrix4().makeTranslation(0, 0.003, -0.025); // asoma por delante del puño
+
+  finish(root);
+  return { root, lid, injector, leftArm, lh, rightArm, grip, armPt };
 }

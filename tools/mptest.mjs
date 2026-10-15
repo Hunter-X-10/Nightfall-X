@@ -1,7 +1,7 @@
 // Prueba del modo en línea: dos navegadores (anfitrión e invitado) y un tercer jugador simulado
 // crean/entran en una sala y juegan una partida corta. Se comprueba la sala, la sincronización de
 // movimiento, los nombres, el combate con las tres armas (daño, bajas, marcador, reaparición, bidones),
-// los ajustes de la partida y el final de partida.
+// el botín (cofres, objetos del suelo y vendas), los ajustes de la partida y el final de partida.
 //
 //   node tools/mptest.mjs [dirSalida] [--port 5198]
 import puppeteer from 'puppeteer-core';
@@ -58,7 +58,7 @@ const fire = async (page, ms) => { await page.evaluate('__game.input.fire = true
 
 // Jugador simulado: habla el protocolo directamente, sin navegador.
 class Bot {
-  constructor() { this.id = 0; this.room = null; this.started = null; this.hits = 0; this.kills = []; this.ended = null; this.error = ''; this.pose = null; this.timer = null; }
+  constructor() { this.id = 0; this.room = null; this.started = null; this.hits = 0; this.kills = []; this.loots = []; this.takes = []; this.ended = null; this.error = ''; this.pose = null; this.timer = null; }
 
   async connect() {
     this.ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
@@ -69,6 +69,8 @@ class Bot {
       if (m.t === 'start') { this.started = m; this.room = m.room; }
       if (m.t === 'hit') this.hits++;
       if (m.t === 'kill') this.kills.push(m);
+      if (m.t === 'loot') this.loots.push(m);
+      if (m.t === 'take') this.takes.push(m);
       if (m.t === 'end') this.ended = m;
       if (m.t === 'error') this.error = m.msg;
     });
@@ -255,7 +257,9 @@ try {
 
   // Rival a 8 m: el daño llega a la víctima.
   botAt = [40, 10, 0];
-  await B.evaluate('__game.teleport(0, 2.5, 180, 0)');
+  // Si pisa un chaleco que dejó un caído, el daño iría a él: las comprobaciones de vida se hacen sin chaleco
+  // y sin objetos en el suelo de su pantalla (así no recoge ninguno).
+  await B.evaluate('__game.loot.items.clear(); __game.player.armor = 0; __game.teleport(0, 2.5, 180, 0)');
   await A.evaluate('__game.teleport(0, 10.5, 0, -3)');
   await sleep(700);
   await fire(A, 110);
@@ -302,7 +306,7 @@ try {
   const hud = () => A.evaluate('({ cur: __game.weapon.cur, name: document.getElementById("weapon-name").textContent, on: [...document.querySelectorAll("#toolbar .slot")].findIndex((s) => s.classList.contains("on")) })');
   const weaponSeenByB = () => B.evaluate('(() => { const r = [...__game.remotes.map.values()].find((p) => p.name === "Alex"); return __game.remotes.weaponOf(r); })()');
   // Pistola: un disparo por pulsación y menos daño que el fusil.
-  await B.evaluate('__game.teleport(0, 2.5, 180, 0)');
+  await B.evaluate('__game.loot.items.clear(); __game.player.armor = 0; __game.teleport(0, 2.5, 180, 0)');
   await A.evaluate('__game.input.pressed.add("Digit2")');
   await A.evaluate('__game.teleport(0, 10.5, 0, -3)');
   await sleep(800);
@@ -335,7 +339,7 @@ try {
   await waitFor(B, '__game.player.dead === false', 5000);
   const respawnMs = Date.now() - tDead;
   check('se reaparece en el tiempo que fijó el anfitrión (2 s)', respawnMs > 1500 && respawnMs < 2900, `${respawnMs} ms`);
-  await B.evaluate('__game.teleport(0, 2.5, 180, 0)'); // de cara al anfitrión
+  await B.evaluate('__game.loot.items.clear(); __game.player.armor = 0; __game.teleport(0, 2.5, 180, 0)'); // de cara al anfitrión
   await sleep(3000); // fin de la protección de reaparición
   await A.evaluate('__game.teleport(0, 4, 0, -8)');
   await fire(A, 100);
@@ -377,6 +381,51 @@ try {
   await sleep(500);
   const afterFall = await A.evaluate('({ score: __game.net.room.score.join(), d: __game.net.room.players.find((p) => p.name === "Marta").d, feed: document.getElementById("killfeed").textContent })');
   check('morir sin rival no da puntos', afterFall.score === '2,0' && afterFall.d === 3 && afterFall.feed.includes('HA CAÍDO'), JSON.stringify(afterFall));
+
+  // ------------------------------------------------------------------
+  section('Botín');
+  const chestsA = await A.evaluate('__game.loot.chests.map((c) => [c.s, c.open])');
+  check('al menos 6 cofres aunque haya pocos jugadores, en sitios distintos y cerrados', chestsA.length === 6 && new Set(chestsA.map((c) => c[0])).size === 6 && chestsA.every((c) => !c[1])
+    && JSON.stringify(bot.started.loot.chests) === JSON.stringify(chestsA.map((c) => [c[0], 0])), JSON.stringify(chestsA));
+  // El anfitrión mira el primero y pulsa F.
+  await A.evaluate('(() => { const c = __game.loot.chests[0]; __game.teleport(c.x + Math.sin(c.yaw) * 1.6, c.z + Math.cos(c.yaw) * 1.6, c.yaw * 180 / Math.PI, -40); })()');
+  await sleep(400);
+  const hintA = await A.evaluate('document.getElementById("use-hint").classList.contains("on") ? document.getElementById("use-text").textContent : "(sin aviso)"');
+  const lightBefore = await A.evaluate('__game.weapon.lightOn');
+  await A.evaluate('__game.input.pressed.add("KeyF")');
+  await sleep(500);
+  const opened = await B.evaluate('({ open: __game.loot.chests[0].open, items: [...__game.loot.items.values()].map((i) => i.id) })');
+  check('mirar un cofre y pulsar F lo abre para todos', hintA === 'ABRIR COFRE' && opened.open && bot.loots.length === 1 && bot.loots[0].items.every((d) => opened.items.includes(d[0]))
+    && bot.loots[0].items.length >= 1 && bot.loots[0].items.length <= 3, `${hintA} · ${JSON.stringify(opened)}`);
+  check('F no cambia la linterna si se mira un cofre', (await A.evaluate('__game.weapon.lightOn')) === lightBefore);
+  await A.evaluate('__game.net.openChest(0)');
+  await sleep(300);
+  check('un cofre abierto no vuelve a dar botín', bot.loots.length === 1);
+  // Dos piden el mismo objeto: sólo se lo lleva uno y desaparece para todos.
+  const first = bot.loots[0].items[0][0];
+  bot.send({ t: 'take', id: first });
+  await A.evaluate(`__game.net.take(${first})`);
+  await sleep(400);
+  check('cada objeto se lo lleva sólo el primero que lo pide', bot.takes.filter((m) => m.id === first).length === 1
+    && !(await A.evaluate(`__game.loot.items.has(${first})`)) && !(await B.evaluate(`__game.loot.items.has(${first})`)));
+  // Al caer, el invitado dejó unas vendas o un chaleco; el anfitrión lo recoge al pasar por encima.
+  const fall = bot.kills[bot.kills.length - 1].drop;
+  check('el caído deja unas vendas o un chaleco', !!fall && (fall[1] === 0 || fall[1] === 2) && (await A.evaluate(`__game.loot.items.has(${fall[0]})`)), JSON.stringify(fall));
+  // Sin chaleco ni vendas (puede que se llevara algo del cofre): con el chaleco entero no se coge otro.
+  await A.evaluate(`__game.player.armor = 0; __game.weapon.slots[3].count = 0; __game.teleport(${fall[2]}, ${fall[4]}, 0, 0)`);
+  await sleep(700);
+  const got = await A.evaluate(`({ armor: __game.player.armor, band: __game.weapon.itemCount(0), left: __game.loot.items.has(${fall[0]}) })`);
+  check('se recoge al pasar por encima', !got.left && (fall[1] === 2 ? got.armor === 50 : got.band === 1), JSON.stringify(got));
+  // Vendas: tecla 4, un clic y en 2,5 s curan media vida (en línea la vida no se recupera sola).
+  await A.evaluate('__game.player.armor = 0; __game.weapon.slots[3].count = 1; __game.player.health = 40; __game.input.pressed.add("Digit4")');
+  await sleep(700);
+  await fire(A, 100);
+  await sleep(800);
+  const itemSeen = await B.evaluate('(() => { const r = [...__game.remotes.map.values()].find((p) => p.name === "Alex"); return { item: (r.flags & 8192) !== 0, weapon: __game.remotes.weaponOf(r), aim: r.pose.aim }; })()');
+  check('los demás ven que lleva vendas en la mano', itemSeen.item && itemSeen.weapon === 0 && itemSeen.aim < 0.3, JSON.stringify(itemSeen));
+  await sleep(2100);
+  const healed = await A.evaluate('({ hp: __game.player.health, band: __game.weapon.itemCount(0), cur: __game.weapon.cur })');
+  check('las vendas curan media vida y se vuelve al arma', Math.abs(healed.hp - 90) < 0.5 && healed.band === 0 && healed.cur === 0, JSON.stringify(healed));
 
   // ------------------------------------------------------------------
   section('Final de partida');
@@ -428,7 +477,7 @@ try {
   await A.evaluate('__game.input.pressed.add("Digit1")');
   await sleep(600);
   const only = await A.evaluate('({ cur: __game.weapon.cur, mask: __game.weapon.allowedMask, off: [...document.querySelectorAll("#toolbar .slot")].map((s) => s.classList.contains("off")).join() })');
-  check('sólo cuchillo: no se puede sacar otra arma', only.cur === 2 && only.mask === 4 && only.off === 'true,true,false', JSON.stringify(only));
+  check('sólo cuchillo: no se puede sacar otra arma', only.cur === 2 && only.mask === 28 && only.off === 'true,true,false,false,false', JSON.stringify(only)); // 28: cuchillo, vendas y botiquín
   const clock = await B.evaluate('({ on: !document.getElementById("clock").classList.contains("hidden"), text: document.getElementById("clock").textContent })');
   check('el reloj muestra el tiempo que queda', clock.on && /^0:0\d$/.test(clock.text), JSON.stringify(clock));
   await shot(A, '6-la-solana-solo-cuchillo');
@@ -446,7 +495,7 @@ try {
   await click(A, 'btn-enter');
   await sleep(900);
   const third = await B.evaluate('({ mode: __game.mode, cur: __game.weapon.cur, mask: __game.weapon.allowedMask, clock: document.getElementById("clock").classList.contains("hidden") })');
-  check('otra partida con todas las armas y sin límite de tiempo', third.mode === 'online' && third.cur === 0 && third.mask === 7 && third.clock, JSON.stringify(third));
+  check('otra partida con todas las armas y sin límite de tiempo', third.mode === 'online' && third.cur === 0 && third.mask === 31 && third.clock, JSON.stringify(third));
   const port = await B.evaluate(env); const portA = await A.evaluate(env);
   check('la tercera se juega en Muelle Norte, cada equipo en su base', port.map === 2 && portA.map === 2 && port.x > 36 && portA.x < -36 && Math.min(Math.abs(port.z + 24), Math.abs(port.z - 10)) < 4.3, `A ${portA.x.toFixed(1)}, ${portA.z.toFixed(1)}  B ${port.x.toFixed(1)}, ${port.z.toFixed(1)}`);
   check('ambiente del puerto: nevando y con niebla densa', port.rain && port.fog > 0.02 && (await B.evaluate('__game.weather.storm === false')), JSON.stringify(port));
