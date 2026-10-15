@@ -310,7 +310,21 @@ kbd {
 .charm-grid .btn:first-child { grid-column: 1 / -1; }
 .tabs .btn:hover:not(.on), .charm-grid .btn:hover:not(.on) { background: rgba(255, 179, 71, 0.16); color: var(--hud); border-color: var(--accent); }
 .tabs .btn.on, .charm-grid .btn.on { background: var(--accent); color: #06090d; border-color: var(--accent); }
-#armory .tip { margin-top: 18px; max-width: 420px; }
+#armory .tip { margin-top: 18px; max-width: 420px; line-height: 1.7; }
+.tabs.modes { grid-template-columns: repeat(2, 1fr); margin-bottom: 8px; }
+.tabs .btn:disabled { opacity: .25; }
+/* Skins: casilla con la rareza en el borde izquierdo y bajo el nombre (--rar). */
+.skin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 420px; max-width: 82vw; }
+.skin-tile {
+  pointer-events: auto; cursor: pointer; font: inherit; text-align: left; padding: 6px 8px 6px 10px;
+  color: var(--hud); background: rgba(6, 9, 13, 0.45); border: 1px solid rgba(255, 255, 255, 0.18); border-left: 3px solid var(--rar);
+  transition: background .15s, border-color .15s;
+}
+.skin-tile b { display: block; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skin-tile span { display: block; font-size: 9px; letter-spacing: 1.5px; color: var(--rar); margin-top: 2px; }
+.skin-tile:hover:not(.on) { background: rgba(255, 179, 71, 0.16); border-color: var(--accent); border-left-color: var(--rar); }
+.skin-tile.on { background: var(--accent); color: #06090d; border-color: var(--accent); border-left-color: var(--rar); }
+.skin-tile.on span { color: #06090d; }
 
 /* ---------- Supervivencia ---------- */
 #survival h2 { font-size: 46px; margin-bottom: 0; }

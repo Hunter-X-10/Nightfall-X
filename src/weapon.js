@@ -3,10 +3,11 @@
 // con el cuchillo (tecla V): puñalada de lado o remate por la espalda. En línea, además, vendas y botiquín
 // (huecos 4 y 5): se cogen del suelo, se sacan como un arma y se usan con el clic.
 import * as THREE from 'three';
-import { buildViewModel, buildPistolModel, buildKnifeModel, buildGrabHand, buildBandageModel, buildMedkitModel, SIGHT_Y, PISTOL_SIGHT_Y, WRAP_LEN } from './viewmodel.js';
+import { buildViewModel, buildPistolModel, buildKnifeModel, buildGrabHand, buildBandageModel, buildMedkitModel, paintParts, SIGHT_Y, PISTOL_SIGHT_Y, WRAP_LEN } from './viewmodel.js';
 import { TAKEDOWN_STAB, TAKEDOWN_TIME } from './enemyModel.js';
 import { ITEM, ITEM_MAX } from './loot.js';
 import { Charm, loadCharms } from './charms.js';
+import { SKIN_BOX, SKIN_TIME, bakeSkinSpace, loadSkins, loadSkinSet, skinWarmup } from './skins.js';
 import { FRAME } from './sprites.js';
 import { tracer } from './fxRecipes.js';
 import { clamp, damp, lerp, rand, smoothstep as ss } from './utils.js';
@@ -115,7 +116,47 @@ export class Weapon {
     this.cur = RIFLE;
     this.charms = this.slots.map(() => null); // llavero de cada arma (null = ninguno)
     loadCharms().forEach((id, i) => this.setCharm(i, id));
+    // Skins del fusil y la pistola: piezas pintables de cada una y juego de materiales puesto (null = de fábrica).
+    this.paint = SKIN_BOX.map((_, i) => {
+      const parts = paintParts(this.slots[i].vm);
+      for (const p of parts) bakeSkinSpace(p.mesh, this.slots[i].vm.root);
+      return parts;
+    });
+    this.skins = SKIN_BOX.map(() => null);
+    this.skinLoad = SKIN_BOX.map(() => null); // skin pedida que aún se está pintando
+    loadSkins().forEach((id, i) => this.setSkin(i, id));
+    // Compila los shaders de las skins al cargar (ver skinWarmup); main.js lo quita a los pocos fotogramas.
+    this.warm = skinWarmup(this.paint[0][0].base);
+    camera.add(this.warm);
     this.reset();
+  }
+
+  // Pinta el arma `i` (fusil o pistola) con la skin `id` de SKINS, en lugar de la que tuviera. La skin se
+  // pinta fuera del hilo principal: mientras tanto el arma sigue con la anterior. Si se pide otra antes de
+  // que acabe, la pendiente se descarta.
+  setSkin(i, id) {
+    if (!this.paint[i]) return;
+    this.skinLoad[i]?.cancel();
+    this.skinLoad[i] = null;
+    if (id === 'none') { this.wearSkin(i, null); return; }
+    const load = loadSkinSet(id, SKIN_BOX[i], this.paint[i][0].base);
+    this.skinLoad[i] = load;
+    load.promise.then((set) => {
+      if (!set || this.skinLoad[i] !== load) return;
+      this.skinLoad[i] = null;
+      this.wearSkin(i, set);
+    });
+  }
+
+  wearSkin(i, set) {
+    this.skins[i]?.dispose();
+    this.skins[i] = set;
+    for (const p of this.paint[i]) p.mesh.material = set ? (p.accent ? set.accent : set.main) : p.base;
+  }
+
+  // Quita las mallas que compilan los shaders de las skins (ya están en caché).
+  endWarmup() {
+    if (this.warm) { this.camera.remove(this.warm); this.warm = null; }
   }
 
   // Cuelga un llavero (identificador de CHARMS) del arma `i`, en lugar del que tuviera.
@@ -127,6 +168,7 @@ export class Weapon {
 
   // Armería: expone el arma `i` de perfil, girando despacio, con el llavero de cara a la cámara.
   showcase(dt, time, i) {
+    SKIN_TIME.value = time;
     this.root.visible = true;
     this.slots.forEach((s, k) => { s.vm.root.visible = k === i; });
     this.quickKnife.root.visible = false; this.grabHand.root.visible = false;
@@ -255,6 +297,7 @@ export class Weapon {
 
   update(dt, input, player, game) {
     this.time += dt;
+    SKIN_TIME.value = this.time; // skins animadas
     this.sinceShot += dt;
     this.cool = Math.max(0, this.cool - dt);
     this.heat = Math.max(0, this.heat - dt * (this.sinceShot > 0.12 ? 5.5 : 1.2));

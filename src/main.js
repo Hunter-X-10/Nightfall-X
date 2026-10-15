@@ -13,6 +13,7 @@ import { tickVolumetrics } from './volumetric.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
 import { Weapon, LIGHT_POWER } from './weapon.js';
+import { setSkinRenderer } from './skins.js';
 import { Enemies } from './enemies.js';
 import { HUD, renderBoard } from './hud.js';
 import { Combat, STAB_LEFT } from './combat.js';
@@ -154,8 +155,9 @@ async function boot() {
   player.groundSurface = (x, z, y) => (y > 0.06 ? 'metal' : world.ground.surfaceAt(x, z));
   const weapon = (g.weapon = new Weapon(camera, surf, fx, audio));
   weapon.onNotice = (text) => hud.message(text, 1.2);
-  reflection.hidden.push(weapon.root);
-  envHidden.push(weapon.root);
+  reflection.hidden.push(weapon.root, weapon.warm);
+  envHidden.push(weapon.root, weapon.warm);
+  setSkinRenderer(renderer);
   const enemies = (g.enemies = new Enemies(scene, world.col, fx, audio, surf, world.cover));
   enemies.spawn(world.enemies);
   const combat = (g.combat = new Combat(g));
@@ -596,6 +598,7 @@ async function boot() {
     const rawDt = (now - last) / 1000; last = now;
     const dt = Math.min(0.05, rawDt);
     frame++;
+    if (frame === 4) weapon.endWarmup(); // los shaders de las skins ya están compilados
     msAvg += (Math.min(rawDt * 1000, 45) - msAvg) * 0.04;
     fpsAcc += rawDt; fpsN++;
     if (fpsAcc > 0.5) { fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }

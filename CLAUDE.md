@@ -78,6 +78,19 @@ Parámetros útiles en la URL:
 - **Llaveros**: `src/charms.js` tiene el catálogo `CHARMS`, los modelos y un péndulo movido por la aceleración del arma en el mundo.
   - Se eligen en la armería (`src/armory.js`, botón ARMERÍA del menú). Ahí el arma se expone con `Weapon.showcase()`.
   - Se guardan en `localStorage` (`nightfall.charms`) y solo los ve el propio jugador; no viajan por la red.
+- **Skins** del fusil y la pistola (`src/skins.js`): 21 acabados procedurales en el catálogo `SKINS`, cada uno con su rareza (`RARITY`: común, rara, épica, legendaria y mítica, con los colores de los shooters).
+  - Recrean acabados genéricos de CS2 y CoD con nombres propios: camuflajes, pavonado, fibra de carbono, telaraña, óxido, temple, damasco, anodizados, degradado, oro, diamante, nebulosa y lava. Por decisión de Claude, no se copian los diseños con autor (Asiimov, Dragon Lore…) ni sus nombres.
+  - El catálogo y los pintores están en `src/skinPaint.js`, sin three.js; `skins.js` los vuelve a exportar. Cada skin es una función `paint(x, y, o)` que se pinta por píxel en tres búferes de 1024×512: color, rugosidad y metal (G y B) y emisión. Se pinta al elegirla y la comparten fusil y pistola. Las texturas se liberan cuando ya nadie las usa.
+  - **Cambiar de skin no debe congelar el juego** (lo pidió el usuario pensando en ordenadores flojos):
+    - Se pinta en workers (`src/skinWorker.js`, hasta 4), cada uno una franja de filas, con una cola que salta las skins que ya nadie quiere. Si no hay workers, se pinta en el hilo principal.
+    - Las texturas son `DataTexture` (filas de abajo arriba) y se suben a la tarjeta una por fotograma con `renderer.initTexture` (`setSkinRenderer`).
+    - Los shaders, con barniz y sin él, se compilan al cargar con `skinWarmup`: mallas de menos de un píxel delante de la cámara, que `main.js` quita en el fotograma 4 (`weapon.endWarmup`).
+    - Antes, el primer cambio tardaba ~840 ms en un solo fotograma. Ahora ningún fotograma pasa de 14 ms y la skin aparece a los 60-155 ms.
+    - `weapon.setSkin` es asíncrono: el arma lleva la skin anterior hasta que la nueva está lista y, si se pide otra entretanto, la pendiente se cancela (`loadSkinSet` → `cancel`). En pruebas, espera a que `weapon.skins[i]?.def.id` sea la pedida antes de hacer la captura.
+  - Se proyectan en triplanar (`skinMaterial`, `MeshPhysicalMaterial` con `onBeforeCompile`) con la posición de cada pieza en el espacio del arma: los atributos `skinPos`/`skinNrm` los hornea `bakeSkinSpace` en reposo, así el dibujo encaja entre la corredera, el cargador y el resto. `SKIN_BOX` dice qué parte del arma cubre el lienzo.
+  - Pintan las piezas con `mat.black`, `mat.fde` y `mat.dark` (`paintParts` de `viewmodel.js`); `dark` va con el brillo `accent` de la skin. Las manos, el acero y las miras no cambian.
+  - Por skin: `grain` (normal map de grano; en los metales pulidos casi nada, porque parecía arena), `env` (reflejos), `clearcoat`, `emit`, `scroll` y `pulse` (las míticas se animan con `SKIN_TIME`, que avanza `Weapon`).
+  - `weapon.setSkin(arma, id)` las pone. La armería tiene dos modos, SKINS y LLAVEROS; el cuchillo aún no tiene skins. Se guardan en `localStorage` (`nightfall.skins`) y por ahora no viajan por la red.
 - **Supervivencia** (botón SUPERVIVENCIA del menú, `src/survival.js`): oleadas sin fin en cualquiera de los 3 mapas. Es solo local, sin red. `mode` vale `'survival'` y `combat.survival` quita los objetivos de la misión.
   - Oleada n: `FIRST_WAVE + WAVE_STEP·(n−1)` enemigos (4, 7, 10…), como mucho `MAX_ALIVE` (8) a la vez; el resto entra de refuerzo. Cada oleada sube `combat.difficulty` (puntería) y baja `enemies.reactK` (reacción), con tope.
   - Al superar una oleada: bonus de puntos, vida al máximo, fusil a 200 de reserva como mínimo (`REFILL`), pistola llena, bidones repuestos y 20 s de descanso (`REST_TIME`).
@@ -113,6 +126,7 @@ Parámetros útiles en la URL:
 - **Supervivencia y misión comparten soldados.** `enemies.reset()` (al empezar la misión o volver al menú) los devuelve a todos a su patrulla con `off = false`, y `setMode` llama a `survival.stop()`, que quita `hunt`, `nav` y la dificultad. `useMap` cambia `enemies.col`/`cover`/`lights` al mapa en uso.
 - **Probar el golpe rápido.** Necesita un sitio despejado: en La Solana, `teleport(-9, 25, 0)` y colocar un enemigo a 1,3 m delante, de espaldas (`e.x`, `e.z`, `e.yaw`, `e.wait = 999`; parchea `enemies.engage` para que no se gire). Para forzar el tipo, fija `Math.random` antes de `input.pressed.add('KeyV')` (< 2/3 remate). Para fotografiar fases concretas, envuelve `requestAnimationFrame` y retén los fotogramas cuando `weapon.quick.t` llegue al instante deseado.
 - **Armas: anclajes fijos.** `SIGHT_Y`, `PISTOL_SIGHT_Y`, `MUZZLE` y `EJECT`, la lente de la mira y las piezas que anima `weapon.js` (`bolt`, `mag`, `slide`, `leftArm`, `rightArm`, `lens`, `lampLens`, `charm`) deben conservar posición y nombre. Si no, se desalinean la mira, la recarga o los efectos.
+- **Skins: qué se pinta.** `paintParts` decide por el material: si una pieza nueva del fusil o la pistola debe llevar la skin, hazla con `mat.black`, `mat.fde` o `mat.dark`; si no debe llevarla (acero, miras), usa otro. Si cambias el tamaño de un arma, revisa su `SKIN_BOX`.
 - **Acabado de las armas.** Fusil y pistola usan un grano fino y mate. El normal map de gotas (`surf.glassDrops`) en piezas grandes parecía abolladuras y al usuario no le gustó. El cuchillo conserva el acabado antiguo (`knifeBlack`/`knifeDark`).
 - **`ctx.rng` es una secuencia.** Llamarlo en código nuevo desplaza todo lo aleatorio que se genera después: cajas, bidones, carga del carguero. Para detalle nuevo, usa valores fijos.
 - **Detalle visual de los mapas.** Añádelo con `ctx.add` o `collide: false`, sin tocar colisionadores, nodos de cobertura, zonas de aparición ni `src/layout.js`.
@@ -198,11 +212,20 @@ Parámetros útiles en la URL:
   - Chaleco de 50, que se lleva el daño primero, se pone solo y no se guarda. En la misión y en supervivencia solo hay chaleco: se empieza con él y, en supervivencia, se recarga al empezar cada descanso.
   - Decisiones de Claude: en línea la vida ya no se recupera sola (si no, las vendas no tendrían sentido); el cofre se hizo por código y no con un modelo 3D descargado (los gratuitos son de estilo dibujo animado y chocaban con el juego); lo que nadie recoge desaparece a los 2 minutos; la puñalada rápida no la para el chaleco; con vendas o botiquín en la mano no hay golpe rápido.
   - En el primer 1 contra 1 del usuario no salió ningún cofre: el mínimo era 2 (difíciles de encontrar) y los cambios aún no estaban publicados. Se subió a 6 (`CHEST_MIN`). Lo volvió a probar en local y le pareció "perfecto".
+- **Sesión del 15 de octubre de 2026 (tercera parte)**: skins, cuchillos y progreso.
+  - El usuario quiere skins para las armas, cuchillos tipo CoD/CS2 y una forma de conseguirlos (también los llaveros) para que la gente siga jugando, con el progreso guardado en cada dispositivo.
+  - Plan por fases, de más fácil a más difícil:
+    1. Skins de fusil y pistola (hecha, ver Arquitectura).
+    2. Perfil en `localStorage` (`nightfall.profile`), que recoge `nightfall.charms` y `nightfall.skins`.
+    3. Niveles por XP más monedas para abrir cajas con ruleta tipo CS2.
+    4. Cuchillos: karambit, bayoneta M9, tomahawk y mariposa, la última por ser la más difícil.
+  - Respuestas del usuario: se consiguen con niveles y cajas a la vez, los demás jugadores en línea ven tu skin y tu cuchillo, y las skins deben parecer muy reales, como las de CS:GO y CoD.
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
   - Pasar la pausa, la armería, las salas y la pantalla final al estilo del menú nuevo (se ofreció; siguen con los botones de antes).
   - Mecánicas que faltan: solo las granadas (ver "Mecánicas pendientes"). El siguiente bit libre de `flags` es el 14.
+  - **Más skins en el futuro.** Al usuario le gustaron mucho los diseños de la fase 1 y quiere ampliar el catálogo más adelante. Para añadir una, basta con otra entrada en `SKINS` con su función `paint` (ver Skins en Arquitectura).
 
 ## Mecánicas pendientes
 

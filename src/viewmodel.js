@@ -122,6 +122,19 @@ function kit(surf) {
 
 const finish = (root) => root.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; } });
 
+// Piezas del arma que pinta una skin (src/skins.js): el cuerpo (negro y FDE) y los detalles oscuros
+// (`accent`). Las manos, el acero (gatillo, cerrojo, pasadores) y las miras se quedan como están.
+export function paintParts(vm) {
+  const parts = [];
+  const visit = (o) => {
+    if (o === vm.leftArm || o === vm.rightArm) return;
+    if (o.isMesh && _mat && [_mat.black, _mat.fde, _mat.dark].includes(o.material)) parts.push({ mesh: o, base: o.material, accent: o.material === _mat.dark });
+    o.children.forEach(visit);
+  };
+  visit(vm.root);
+  return parts;
+}
+
 // Punto del que cuelga el llavero (ver src/charms.js).
 function anchor(root, x, y, z) {
   const o = new THREE.Object3D();
