@@ -19,6 +19,10 @@ const B = Object.fromEntries(BONES.map((b, i) => [b[0], i]));
 // 0,57 m del pivote de la columna, la cabeza se aparta 0,38 m (LEAN_DIST de player.js).
 export const LEAN_HIP = 0.15;
 export const LEAN_SPINE = 0.42;
+// Deslizamiento (slide = 1): altura de la cadera (m) y torso echado hacia atrás (rad). Las cápsulas de
+// impacto de remotePlayers.raycast usan las mismas constantes.
+export const SLIDE_HIP = 0.42;
+export const SLIDE_BACK = 0.3;
 export const ARM_UP = 0.29;
 export const ARM_FORE = 0.3;
 // Remate con el cuchillo por la espalda (segundos desde que se agarra a la víctima): el atacante clava el
@@ -342,14 +346,17 @@ export function takedownPose(p, t) {
 // Aplica la pose. p: { phase, walk, crouch, aim, aimPitch, flinchX, flinchY, death, deathDir, lean }
 // Opcionales: weapon (0 fusil, 1 pistola, 2 cuchillo) y swing (avance 0-1 del tajo), de los jugadores;
 // grab y slump (0-1), de la víctima de un remate (ver takedownPose). Sólo se usan en soldados que ya no
-// reciben disparos, así que no cambian las zonas de impacto.
+// reciben disparos, así que no cambian las zonas de impacto. slide (0-1, deslizándose), de los jugadores:
+// éste sí las cambia (ver SLIDE_HIP y SLIDE_BACK). vault (0-1, trepando), de los jugadores: piernas recogidas
+// como al agacharse (sus cápsulas son las de agachado) y la mano izquierda apoyada en el obstáculo.
 export function poseSoldier(s, p) {
   const b = s.bone;
   const sw = Math.sin(p.phase);
   const walk = p.walk;
   const cr = p.crouch;
   const grab = p.grab || 0; const slump = p.slump || 0;
-  const knee = Math.max(cr, slump * 0.55); // al desplomarse se le doblan las rodillas
+  const vt = p.vault || 0;
+  const knee = Math.max(cr, slump * 0.55, vt); // al desplomarse se le doblan las rodillas; al trepar, se recogen
   // Piernas: marcha + flexión al agacharse.
   const thigh = -knee * 1.15;
   const shin = knee * 2.05;
@@ -360,14 +367,23 @@ export function poseSoldier(s, p) {
   b.thighL.rotation.z = knee * 0.12; b.thighR.rotation.z = -knee * 0.12;
   b.pelvis.position.y = 0.95 - knee * 0.4 + Math.abs(Math.cos(p.phase)) * 0.035 * walk;
   b.pelvis.rotation.y = sw * 0.09 * walk;
+  // Deslizamiento: pierna derecha estirada por delante y la izquierda doblada debajo, con la rodilla en el
+  // suelo; la cadera baja a SLIDE_HIP.
+  const sl = p.slide || 0;
+  if (sl > 0) {
+    b.thighR.rotation.x += (-1.2 - b.thighR.rotation.x) * sl; b.shinR.rotation.x += (0.15 - b.shinR.rotation.x) * sl;
+    b.thighL.rotation.x += (-0.55 - b.thighL.rotation.x) * sl; b.shinL.rotation.x += (2.3 - b.shinL.rotation.x) * sl;
+    b.thighL.rotation.z += (0.25 - b.thighL.rotation.z) * sl; b.thighR.rotation.z += (-0.05 - b.thighR.rotation.z) * sl;
+    b.pelvis.position.y += (SLIDE_HIP - b.pelvis.position.y) * sl;
+  }
   // Asomarse (lean -1 izquierda, 1 derecha): la cadera se aparta y el torso se inclina hacia ese lado.
   // El modelo mira a +Z, así que su derecha es -X. Las cápsulas de impacto usan LEAN_HIP y LEAN_SPINE.
   b.pelvis.position.x = -p.lean * LEAN_HIP;
   // Torso: inclinación al correr, apuntado vertical y sacudida por impacto.
   // Remate: arqueado hacia atrás con la cabeza levantada al agarrarlo; luego se vence hacia delante.
-  b.spine.rotation.set(0.1 * walk + cr * 0.28 - p.aimPitch * p.aim * 0.75 + p.flinchX - grab * 0.3 + slump * 0.32,
+  b.spine.rotation.set(0.1 * walk + cr * 0.28 * (1 - sl) - sl * SLIDE_BACK + vt * 0.25 - p.aimPitch * p.aim * 0.75 + p.flinchX - grab * 0.3 + slump * 0.32,
     -sw * 0.11 * walk + p.flinchY + p.aim * -0.22, p.lean * LEAN_SPINE);
-  b.head.rotation.set(-cr * 0.2 - p.aimPitch * p.aim * 0.2 - 0.1 * walk - grab * 0.55 + slump * 0.75,
+  b.head.rotation.set(-cr * 0.2 * (1 - sl) + sl * SLIDE_BACK - p.aimPitch * p.aim * 0.2 - 0.1 * walk - grab * 0.55 + slump * 0.75,
     (p.aim * 0.2 + (1 - p.aim) * Math.sin(p.look) * 0.5) * (1 - Math.max(grab, slump)), 0);
 
   const a = p.aim;
@@ -386,6 +402,8 @@ export function poseSoldier(s, p) {
     _grip.set(-0.13 + a * 0.01, 0.1 + a * 0.16, 0.2 + a * 0.07);
     _ge.set((1 - a) * 0.62 + sw * 0.03 * walk, (1 - a) * 0.72 + a * 0.2, (1 - a) * 0.25);
   }
+  // Deslizamiento: el arma no sigue al torso echado hacia atrás, sigue apuntando al frente.
+  _ge.x += sl * SLIDE_BACK;
   // Remate: el arma se le cae hacia abajo, colgando de la mano derecha.
   const drop = Math.max(grab, slump);
   if (drop > 0) {
@@ -403,6 +421,8 @@ export function poseSoldier(s, p) {
   // Remate: la izquierda va al cuello al agarrarlo y después cuelga.
   if (grab > 0) _hand.lerp(_t.set(0.05, 0.4, 0.13), grab);
   if (slump > 0) _hand.lerp(_t.set(0.26, -0.12, 0.06), slump);
+  // Trepando: la izquierda baja a apoyarse en el obstáculo.
+  if (vt > 0) _hand.lerp(_t.set(0.2, -0.2, 0.38), vt);
   solveArm(b.armL, b.foreL, 0.21, 0.34, 0, _hand, 0.7, -1, 0.1);
 
   // Caída al morir: el cuerpo gira sobre los pies y las extremidades se sueltan.

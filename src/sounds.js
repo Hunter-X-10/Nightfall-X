@@ -182,6 +182,37 @@ export function installSounds(proto) {
     }
   });
 
+  // Deslizamiento propio: golpe sordo al tirarse y roce de la ropa contra el suelo que se va apagando.
+  def('slide', function (surface) {
+    const out = this._out(rand(-0.05, 0.05), this.indoor * 0.1, 0.38);
+    const p = rand(0.9, 1.1);
+    this.noise(out, { type: 'lowpass', f0: 600 * p, f1: 160, peak: 0.55, decay: 0.12, pink: true });
+    if (surface === 'water') {
+      this.noise(out, { type: 'bandpass', f0: 1300 * p, f1: 500, q: 0.7, peak: 0.45, attack: 0.03, decay: 0.55 });
+      this.noise(out, { type: 'highpass', f0: 4500, peak: 0.12, attack: 0.02, decay: 0.35 });
+    } else {
+      const f = (surface === 'dirt' ? 900 : surface === 'metal' ? 2100 : 1500) * p;
+      this.noise(out, { type: 'bandpass', f0: f, f1: f * 0.45, q: 0.9, peak: 0.32, attack: 0.04, decay: 0.6, pink: surface === 'dirt' });
+      this.noise(out, { type: 'highpass', f0: 3800, peak: 0.06, attack: 0.03, decay: 0.4 });
+    }
+  });
+
+  // Trepar: palmada de la mano sobre el obstáculo, roce de la ropa y el equipo al pasar por encima.
+  def('vault', function (surface) {
+    const out = this._out(rand(-0.08, 0.08), this.indoor * 0.1, 0.36);
+    const p = rand(0.9, 1.1);
+    if (surface === 'metal') {
+      this.noise(out, { type: 'lowpass', f0: 1600 * p, peak: 0.45, decay: 0.05 });
+      this.tone(out, { f0: 240 * p, f1: 170, peak: 0.22, decay: 0.16 });
+      this.tone(out, { f0: 930 * p, peak: 0.05, decay: 0.14 });
+    } else {
+      this.noise(out, { type: 'bandpass', f0: (surface === 'wood' ? 900 : 1300) * p, q: 0.9, peak: 0.55, decay: 0.05, pink: true });
+      this.tone(out, { f0: 140 * p, f1: 80, peak: 0.2, decay: 0.06 });
+    }
+    this.noise(out, { type: 'bandpass', f0: 1800 * p, f1: 900, q: 1.1, peak: 0.22, attack: 0.05, decay: 0.28, delay: 0.06, pink: true });
+    this.noise(out, { type: 'bandpass', f0: 3400 * p, q: 3, peak: 0.07, decay: 0.03, delay: 0.17 });
+  });
+
   def('whizz', function (side) {
     const out = this._out(side * 0.8, 0.1, 0.35);
     this.noise(out, { type: 'bandpass', f0: rand(2800, 4200), f1: 800, q: 5, peak: 0.6, attack: 0.02, decay: 0.13 });

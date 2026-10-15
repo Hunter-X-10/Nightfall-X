@@ -138,6 +138,8 @@ async function boot() {
     step: (surface, loud) => { audio.step(surface, loud); if (surface === 'water') combat.footSplash(player.pos.x, player.pos.z); },
     land: (v) => audio.land(v),
     exhausted: () => audio.cough(),
+    slide: (surface) => audio.slide(surface),
+    vault: (surface) => audio.vault(surface),
     hurt: () => { audio.hurt(); hud.damageFrom(player.hurtDir); hurtFlash = 1; },
     death: () => {
       if (mode !== 'online') { endTimer = 2.4; return; }
@@ -583,7 +585,7 @@ async function boot() {
           if (sendT >= SEND_INTERVAL) {
             sendT = 0;
             const flags = (player.crouching ? FLAG.CROUCH : 0) | (player.sprinting ? FLAG.SPRINT : 0) | (weapon.aiming ? FLAG.AIM : 0)
-              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (player.lock ? FLAG.LOCK : 0) | (weapon.cur << WEAPON_SHIFT)
+              | (weapon.lightOn ? FLAG.LIGHT : 0) | (shieldT > 0 ? FLAG.SHIELD : 0) | (player.lock ? FLAG.LOCK : 0) | (player.sliding ? FLAG.SLIDE : 0) | (player.vault ? FLAG.VAULT : 0) | (weapon.cur << WEAPON_SHIFT)
               | ((player.lean < -0.12 ? 1 : player.lean > 0.12 ? 2 : 0) << LEAN_SHIFT);
             net.sendState(player.pos.x, player.pos.y, player.pos.z, player.yaw, player.pitch, flags);
           }

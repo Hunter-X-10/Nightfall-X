@@ -2,7 +2,7 @@
 // las instantáneas que reparte el servidor, con cápsulas de impacto para los disparos y el nombre sobre la
 // cabeza: el de los compañeros se ve siempre; el de los rivales, sólo mientras se les apunta.
 import * as THREE from 'three';
-import { createSoldier, poseSoldier, soldierGeometry, takedownPose, LEAN_HIP, LEAN_SPINE, TAKEDOWN_TIME } from './enemyModel.js';
+import { createSoldier, poseSoldier, soldierGeometry, takedownPose, LEAN_HIP, LEAN_SPINE, SLIDE_BACK, SLIDE_HIP, TAKEDOWN_TIME } from './enemyModel.js';
 import { coneGeometry, coneMaterial, flare } from './volumetric.js';
 import { FLAG, LEAN_SHIFT, PART, TEAM_COLORS, WEAPON_SHIFT } from './net.js';
 import { angleDelta, clamp, damp, lerp, rand, rayCapsule } from './utils.js';
@@ -73,7 +73,7 @@ export class RemotePlayers {
       killed: false, // baja confirmada por el servidor antes de que llegue en las instantáneas
       weapon: 0, swingT: 1, revealT: 0, tagA: 0,
       td: -1, tdX: 0, tdY: 0, tdZ: 0, tdYaw: 0, // remate con el cuchillo (sólo lo ve quien lo hace): segundos desde que empezó
-      pose: { phase: p.id * 1.3, walk: 0, crouch: 0, aim: 1, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0.3, lean: 0, look: 0, grab: 0, slump: 0 },
+      pose: { phase: p.id * 1.3, walk: 0, crouch: 0, aim: 1, aimPitch: 0, flinchX: 0, flinchY: 0, death: 0, deathDir: 1, deathTwist: 0.3, lean: 0, look: 0, grab: 0, slump: 0, slide: 0, vault: 0 },
     };
   }
 
@@ -139,10 +139,13 @@ export class RemotePlayers {
     let best = null; let bt = maxT;
     for (const r of this.map.values()) {
       if (!r.placed || r.team === skipTeam || this.isDown(r) || (!shielded && this.isImmune(r))) continue;
-      const cr = r.pose.crouch;
-      const hipY = r.y + 0.95 - cr * 0.4; const shY = hipY + 0.5;
-      const lean = cr * 0.12;
-      const fx = -Math.sin(r.yaw) * lean; const fz = -Math.cos(r.yaw) * lean; // hacia donde mira
+      const cr = Math.max(r.pose.crouch, r.pose.vault); const sl = r.pose.slide; // trepando, las piernas van recogidas como al agacharse
+      // Deslizándose: la cadera baja a SLIDE_HIP, el torso se echa SLIDE_BACK hacia atrás y la pierna
+      // derecha va estirada por delante (ver poseSoldier).
+      const hipY = r.y + lerp(0.95 - cr * 0.4, SLIDE_HIP, sl); const shY = hipY + 0.5;
+      const lean = lerp(cr * 0.12, -0.5 * Math.sin(SLIDE_BACK), sl);
+      const dirX = -Math.sin(r.yaw); const dirZ = -Math.cos(r.yaw); // hacia donde mira
+      const fx = dirX * lean; const fz = dirZ * lean;
       // Asomarse: todo el cuerpo se aparta con la cadera y el torso gira sobre la columna (ver poseSoldier);
       // la cabeza está a 0,57 m del pivote y el hombro a 0,29 m.
       const ln = r.pose.lean; const ang = ln * LEAN_SPINE;
@@ -154,7 +157,8 @@ export class RemotePlayers {
       if (t >= 0 && t < bt) { bt = t; best = { player: r, part: PART.HEAD, dist: t }; }
       t = rayCapsule(ox, oy, oz, dx, dy, dz, bx, hipY + 0.12, bz, r.x + fx + rx * sh, shY - 0.08, r.z + fz + rz * sh, 0.23 + pad, bt);
       if (t >= 0 && t < bt) { bt = t; best = { player: r, part: PART.TORSO, dist: t }; }
-      t = rayCapsule(ox, oy, oz, dx, dy, dz, bx, r.y + 0.12, bz, bx, hipY, bz, 0.19 + pad, bt);
+      const legX = bx + (dirX * 0.8 + rx * 0.1) * sl; const legZ = bz + (dirZ * 0.8 + rz * 0.1) * sl;
+      t = rayCapsule(ox, oy, oz, dx, dy, dz, legX, r.y + 0.12 + sl * 0.03, legZ, bx, hipY, bz, 0.19 + pad, bt);
       if (t >= 0 && t < bt) { bt = t; best = { player: r, part: PART.LEGS, dist: t }; }
     }
     return best;
@@ -219,10 +223,14 @@ export class RemotePlayers {
 
       const p = r.pose;
       const dead = this.isDown(r);
-      const moving = r.speed > 0.4 && !dead;
-      p.walk = damp(p.walk, moving ? Math.min(1, r.speed / 2.4) : 0, 9, dt);
+      const sliding = (flags & FLAG.SLIDE) !== 0 && !dead;
+      const vaulting = (flags & FLAG.VAULT) !== 0 && !dead;
+      const moving = r.speed > 0.4 && !dead && !sliding && !vaulting;
+      p.walk = damp(p.walk, moving ? Math.min(1, r.speed / 2.4) : 0, sliding || vaulting ? 16 : 9, dt);
       if (moving) p.phase += dt * (3.2 + r.speed * 1.5);
       p.crouch = damp(p.crouch, flags & FLAG.CROUCH ? 1 : 0, 9, dt);
+      p.slide = damp(p.slide, sliding ? 1 : 0, sliding ? 14 : 8, dt);
+      p.vault = damp(p.vault, vaulting ? 1 : 0, 14, dt);
       const leanBits = (flags >> LEAN_SHIFT) & 3;
       p.lean = damp(p.lean, dead ? 0 : leanBits === 1 ? -1 : leanBits === 2 ? 1 : 0, 10, dt);
       p.aim = damp(p.aim, flags & FLAG.SPRINT || dead ? 0 : 1, 8, dt);
@@ -250,7 +258,7 @@ export class RemotePlayers {
       const td = r.td >= 0;
       if (td) {
         takedownPose(p, r.td);
-        p.walk = 0; p.lean = 0; p.swing = 0;
+        p.walk = 0; p.lean = 0; p.swing = 0; p.slide = 0; p.vault = 0;
         p.crouch = damp(p.crouch, 0, 10, dt); p.aim = damp(p.aim, 0, 10, dt);
       } else { p.grab = 0; p.slump = 0; }
 
@@ -277,7 +285,7 @@ export class RemotePlayers {
       tag.visible = r.tagA > 0.02;
       tag.material.opacity = r.tagA;
       // Sobre la cabeza y con tamaño aparente mínimo para que se lea de lejos.
-      tag.position.y = 2.02 - p.crouch * 0.42;
+      tag.position.y = 2.02 - Math.max(p.crouch, p.vault) * 0.42 - p.slide * 0.15;
       tag.position.x = -p.lean * 0.38; // sigue a la cabeza al asomarse (el modelo mira a +Z: su derecha es -X)
       const d = Math.hypot(camera.position.x - x, camera.position.y - (y + 1.9), camera.position.z - z);
       const s = TAG_H * Math.max(1, d / 11);

@@ -44,6 +44,18 @@ Parámetros útiles en la URL:
   - A cubierto, Q/E asoman la cabeza `LEAN_DIST` (0,38 m) a cada lado (`player.lean`, recortado con un rayo para no atravesar paredes). Tras una cobertura baja (< 1,45 m), apuntar levanta al jugador para disparar por encima.
   - `player.headX`/`headZ` son la posición real de la cabeza: la IA (`enemies.js`) la usa para ver y disparar al jugador.
 - **Resistencia**: `player.stamina` (0-1) en `player.js`. El sprint la gasta en 5 s (`STAMINA_DRAIN`) y saltar un 10 %. Tras 1 s sin gastar se recupera en ~4 s andando o ~3 s quieto o agachado. Al llegar a 0, `player.exhausted` impide esprintar hasta recuperar el 30 % (`STAMINA_MIN`), suena una tos corta (`audio.cough`, evento `exhausted`) y la barra fina bajo la vida (`#stamina`, solo visible si no está llena) se pone ámbar. Es solo local: en línea basta el bit `SPRINT`.
+- **Deslizamiento**: pulsar agacharse (Ctrl o C) mientras se esprinta da un impulso de 8,4 m/s en la dirección de la carrera que se frena hasta el paso agachado en 0,8 s (`SLIDE_TIME`). Recorre unos 3 m.
+  - Es permisivo, como en Fortnite, porque al usuario le costaba activarlo. Vale pulsar agacharse hasta 0,4 s después de soltar el sprint (`SLIDE_GRACE`, `player.sprintAgo`) si aún se va a más de 3,4 m/s (`SLIDE_MIN`). La pulsación se recuerda 0,3 s en el suelo (`SLIDE_BUFFER`, `player.slideBuf`) y en el aire no caduca: tras un salto esprintando, se desliza al aterrizar.
+  - La dirección queda fija y la vista se puede girar. Se puede disparar y apuntar. La cámara baja a `EYE_SLIDE` (0,86), se inclina un poco y abre 6° el campo de visión. El arma baja y se ladea (`weapon.updatePose`, con `player.slideK`).
+  - Gasta un 12 % de resistencia (`SLIDE_STAMINA`) y deja 0,45 s de espera (`SLIDE_COOL`). Termina antes si se suelta agacharse, se cae de un borde o se choca. Suena `audio.slide(surface)` (evento `slide`).
+  - En línea va en el bit 11, `FLAG.SLIDE`. El soldado remoto (`pose.slide`) estira la pierna derecha y apoya la rodilla izquierda, con la cadera a `SLIDE_HIP` (0,42) y el torso `SLIDE_BACK` (0,3 rad) hacia atrás.
+- **Trepar**: Espacio frente a un obstáculo de 0,4 a 1,25 m de alto (`VAULT_MIN`/`VAULT_MAX`), a menos de 0,75 m del cuerpo (`VAULT_REACH`) en la dirección en la que se mira. Lo decide `player.tryVault` y, si no hay obstáculo válido, se salta como siempre.
+  - Si el obstáculo tiene como mucho 1,2 m de fondo (`VAULT_DEPTH`) y hay sitio detrás, se salta al otro lado, con una caída máxima de 1,6 m (`VAULT_DROP`). Si no, se sube encima, de pie o agachado según el techo, siempre que la tapa se pueda pisar. Si hay algo encima (una caja apilada, por ejemplo), no se hace nada.
+  - Dura ~0,5-0,65 s (`player.vault`, `updateVault`). Se puede mirar alrededor, pero no moverse, disparar ni dar el golpe rápido. El arma baja y se ladea (`player.vaultK`). Al terminar sale con impulso hacia delante. No es inmune.
+  - Es permisivo, como el deslizamiento: la pulsación de Espacio se recuerda 0,3 s (`VAULT_BUFFER`), también en el aire, midiendo la altura desde donde se despegó (`player.jumpY`). Funciona agachado y desde una cobertura. Gasta un 8 % de resistencia. Suena `audio.vault(surface)`.
+  - `col.topAt` (`colliders.js`) da la tapa más alta bajo un punto, aunque no se pueda pisar. Sirve para medir el obstáculo.
+  - En línea va en el bit 12, `FLAG.VAULT`. La altura ya viaja en el estado. El soldado remoto (`pose.vault`) recoge las piernas como al agacharse, adelanta el torso y apoya la mano izquierda, y sus cápsulas son las de agachado.
+  - Para probarlo: en La Solana, barrera de 0,82 m en (-7.2, 17.2) con `teleport(-7.2, 18.3, 0)`, muro de 1,1 m con `teleport(-13.6, 28.4, 0)` y sacos con `teleport(-6.4, 12, 0)`. Para subirse, la caja de Sector 7 con `teleport(-8.95, 29.2, 90)`; es el único obstáculo bajo, ancho y libre de los tres mapas. Las cajas de madera de La Solana tienen otra apilada encima y no se pueden trepar.
 - **Armas en primera persona**: `src/viewmodel.js` construye los modelos con `profile()` (siluetas extruidas) y `finger()` (dedos). `src/weapon.js` lleva la lógica: disparo, recarga, retroceso y cambio de arma. Las definiciones están en `WEAPONS` y el daño en `DAMAGE` (`src/combat.js`).
 - **Golpe rápido con V**: con cualquier arma, solo si hay un rival a menos de 1,9 m, dentro de la vista, sin pared en medio y **de lado o de espaldas** (de frente no se puede). Entonces sale el aviso `V CUCHILLO` (`#quick-hint`). El objetivo lo elige `combat.quickTarget`. Al pulsar V, al azar (`TAKEDOWN_CHANCE`, 2/3) hace una de dos animaciones:
   - **Remate** (si hay sitio libre a la espalda de la víctima, `player.takedownSpot`): mortal. El jugador queda bloqueado e **inmune** 1,2 s (`player.lock`, `TAKEDOWN_TIME`). La cámara se coloca 0,7 m detrás de la víctima mirando a su nuca, el arma baja del todo, la mano izquierda (`buildGrabHand`) la agarra del hombro y la derecha le clava el cuchillo en el cuello en `TAKEDOWN_STAB`. La víctima hace `takedownPose` (`enemyModel.js`, parámetros `grab` y `slump` de `poseSoldier`) y cae de bruces. Al terminar, el arma sube como tras un cambio (`drawT = 1`).
@@ -68,12 +80,15 @@ Parámetros útiles en la URL:
   - Quien dispara decide el impacto; la víctima aplica el daño y avisa de su muerte; el servidor solo lleva el marcador.
   - El estado de cada jugador es `[x, y, z, yaw, pitch, flags]` (`net.sendState`). `flags`: bits 0-5 de `FLAG` (CROUCH, SPRINT, AIM, LIGHT, DEAD, SHIELD), bits 6-7 el arma (`WEAPON_SHIFT`) y bits 8-9 hacia dónde se asoma (`LEAN_SHIFT`: 0 nada, 1 izquierda, 2 derecha). `roomCore.js` exige 6 elementos: para enviar más estado, usa bits nuevos en vez de alargar el array.
   - Bit 10, `FLAG.LOCK`: el jugador está rematando y es inmune. Los demás no pueden darle (`remotes.isImmune`, como con SHIELD, pero sin parpadeo).
+  - Bit 11, `FLAG.SLIDE`: se está deslizando (ver Deslizamiento).
+  - Bit 12, `FLAG.VAULT`: está trepando (ver Trepar).
   - El mensaje `hit` lleva `k`: con `k = 1` (puñalada rápida) la víctima ignora `dmg` y se queda con `STAB_LEFT` de vida, porque solo ella sabe cuánta le queda (`main.js`, manejador `hit`).
 
 ## Cosas que rompen fácilmente
 
 - **Zonas de impacto ≠ malla.** Los impactos se calculan con cápsulas a partir de la pose (`raycast` en `remotePlayers.js` y en `enemies.js`), no con la geometría. Puedes cambiar el aspecto de los soldados, pero respeta las alturas de cadera (0,95), hombros y cabeza. No toques los huesos, `ARM_UP`/`ARM_FORE` ni `poseSoldier` sin revisar los raycast.
 - **Asomarse: tres números enlazados.** La cámara local se aparta `LEAN_DIST` (0,38, `player.js`). El soldado remoto lo imita con `LEAN_HIP` (0,15) y `LEAN_SPINE` (0,42 rad) de `enemyModel.js`, porque la cabeza está a 0,57 m del pivote de la columna. Las cápsulas de `remotePlayers.raycast` usan esas mismas constantes. Si cambias uno, recalcula los otros y comprueba que la cápsula de la cabeza sigue centrada en la cabeza del modelo.
+- **Deslizamiento: pose y cápsulas.** `SLIDE_HIP` y `SLIDE_BACK` (`enemyModel.js`) los usan a la vez la pose y `remotePlayers.raycast`. Deslizándose, la cápsula de las piernas va de la cadera al pie estirado, 0,8 m por delante. Si cambias la pose de las piernas, mueve también ese punto.
 - **Teclas Q/E.** Son para asomarse. Q dejó de ser "arma anterior": las armas se cambian con la rueda y 1-2-3. V es el golpe rápido.
 - **Golpe rápido: tiempos compartidos.** `TAKEDOWN_STAB` y `TAKEDOWN_TIME` (`enemyModel.js`) los usan a la vez la animación en primera persona (`weapon.js`), el bloqueo del jugador (`player.js`) y la pose de la víctima (IA y remotos). Cámbialos solo ahí. La pose de la víctima no toca las cápsulas de impacto porque solo se aplica a quien ya no recibe disparos.
 - **Cobertura de La Solana y Muelle Norte.** Antes estos mapas devolvían `cover: []`. Ahora exponen sus nodos para la IA de supervivencia, filtrados igual que en Sector 7. En línea no se usan.
@@ -152,43 +167,31 @@ Parámetros útiles en la URL:
     - Estilos en la sección "Menú principal" de `css/style.css`. El texto "JUGAR MISIÓN" ya no cambia al cargar: `main.js` rellena `.mi-desc`.
   - Commits: `933e8b6` (supervivencia, nombre y menú) y `32bc318` (esta documentación).
   - A petición del usuario, Claude pasa a figurar como coautor de los commits (ver Reglas del proyecto).
+- **Sesión del 15 de octubre de 2026**:
+  - El usuario dejó las mecánicas pendientes en cuatro (ver "Mecánicas pendientes") y descartó el resto.
+  - **Deslizamiento** (detalles en Arquitectura). Primero solo se activaba pulsando agacharse en pleno sprint y al usuario le costaba. Lo quiso "parecido al Fortnite": margen de 0,4 s tras soltar el sprint y la pulsación recordada, también en el aire.
+  - **Trepar** obstáculos bajos: los salta o se sube encima, con el mismo criterio permisivo.
+  - El usuario probó las dos cosas en local y le gustaron.
 - **Pendiente**:
   - Probar con gente real y latencia de internet.
   - Decidir si se suaviza la linterna de cerca (durante el golpe rápido ya se atenúa).
   - Pasar la pausa, la armería, las salas y la pantalla final al estilo del menú nuevo (se ofreció; siguen con los botones de antes).
-  - Al usuario no le interesan la supresión, más bidones ni el disparo a ciegas. Siguen en la lista el deslizamiento, trepar, las granadas, los botiquines y una IA más lista. El siguiente bit libre de `flags` es el 11.
+  - Mecánicas que faltan: solo las cuatro de "Mecánicas pendientes". El siguiente bit libre de `flags` es el 13.
 
-## Ideas de mecánicas (brainstorming, octubre 2026)
+## Mecánicas pendientes
 
-Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia**, **golpe rápido con V** y **supervivencia por oleadas** (ver Arquitectura). La "cobertura pegada" al estilo Gears/Division se descartó: pide cámara en tercera persona, poses nuevas y transiciones.
+Hechas: **inclinarse con Q/E**, **cobertura libre**, **resistencia**, **golpe rápido con V**, **supervivencia por oleadas**, **deslizamiento** y **trepar** (ver Arquitectura).
 
-**Movimiento**
+El 15 de octubre de 2026 el usuario dejó la lista en estas cuatro, en este orden. Todo lo demás del brainstorming está descartado y no hay que volver a proponerlo: supresión, más bidones, disparo a ciegas, saltar y agarrarse, IA más lista, puertas y ventanas, cajas empujables y cobertura pegada al estilo Gears/Division.
 
-| Idea | Cómo encaja | Coste | Riesgo en línea |
-|---|---|---|---|
-| Deslizamiento | Sprint + agacharse da un impulso de ~0,8 s que decae. Baja la cámara y la cápsula, y se puede disparar mientras se desliza. | Bajo: es una variante de `crouching` | Medio: necesita un bit nuevo en `flags` y la pose del soldado remoto |
-| Trepar (vault) | Detectar un obstáculo bajo (≤ 1,2 m) delante y subirlo con una animación corta. | Medio: hay que consultar `colliders.js` | Medio |
-| Saltar y agarrarse | Variante de trepar para repisas más altas. | Medio-alto | Medio |
-| ~~Resistencia (stamina)~~ | Hecha. Al añadir deslizamiento o trepar, que gasten `player.stamina`. | — | — |
+| # | Mecánica | Tiempo | Dificultad | Qué hay que tocar |
+|---|---|---|---|---|
+| 1 | ~~Deslizamiento~~ (hecho el 15 de octubre) | 1-2 h | Baja-media | Sprint + agacharse da un impulso de ~0,8 s que decae. Baja la cámara y se puede disparar mientras dura. Gasta `player.stamina`. Necesita pose remota, cápsulas de impacto, un bit nuevo en `flags`, el arma ladeada y un sonido de roce. |
+| 2 | ~~Trepar obstáculos bajos~~ (hecho el 15 de octubre) | 2-3 h | Media | Detectar delante un obstáculo de 1,2 m o menos (`colliders.js`) y subirlo con una animación corta. Gasta `player.stamina`. Necesita pose remota y otro bit. Cuidado con atravesar paredes o quedarse atascado encima. |
+| 3 | Botiquines y chaleco | 2-3 h | Baja-media | Objetos recogibles por el mapa, una barra de armadura en el HUD y daño absorbido en `player.damage`. En línea la armadura es local porque la víctima ya aplica el daño. Lo delicado es sincronizar quién recoge cada objeto. |
+| 4 | Granadas (de fragmentación, de humo y cegadora) | 5-8 h | Alta | Lanzamiento con rebotes, daño por radio con línea de visión, humo que tapa la vista de la IA, efecto de la cegadora, animación de lanzar, IA que huye y un mensaje de red nuevo. Reutiliza `particles.js`/`fxRecipes.js`. El daño funciona como con las balas: quien lanza decide y la víctima lo aplica. |
 
-**Cobertura**
-- Supresión: si te disparan cerca, la visión se desenfoca y viñetea, y la puntería empeora. Hace que la cobertura se sienta útil.
-
-**Combate**
-- Granadas (frag, humo, cegadora): la mecánica con más impacto de las que faltan. Reutiliza `particles.js`/`fxRecipes.js`. En línea hay que sincronizar el lanzamiento; el daño, como con las balas: quien lanza decide y la víctima lo aplica.
-- Armadura/chaleco y botiquines recogibles, para que la salud sea una decisión.
-- Disparo a ciegas desde la cobertura, con poca precisión y poca exposición.
-
-**Mundo y misión**
-- Puertas y ventanas interactivas (abrir, cerrar, romper cristales).
-- Objetos que se mueven: cajas empujables, más bidones explosivos (ya los hay).
-- ~~Oleadas o modo supervivencia~~: hecho (ver Arquitectura).
-- Dificultad de la IA: que flanquee, lance granadas o busque cobertura y se asome.
-
-**Orden propuesto** (menos riesgo primero; comparten el bit de estado, la cápsula variable y la pose remota):
-1. Deslizamiento + trepar obstáculos bajos.
-2. Supresión.
-3. Granadas, las últimas porque tocan red, IA y efectos a la vez.
+En la sesión del 15 de octubre se hacen el deslizamiento y trepar. Botiquines, chaleco y granadas quedan para otra sesión.
 
 **Al implementarlas**:
 - Cualquier pose nueva (deslizar, trepar) cambia las cápsulas de impacto de `remotePlayers.js` y `enemies.js`.

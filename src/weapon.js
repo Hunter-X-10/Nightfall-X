@@ -228,7 +228,7 @@ export class Weapon {
       this.drawT += dt / SWAP_DOWN;
       if (this.drawT >= 1) { this.drawT = 1; this.show(this.pending); this.pending = -1; this.kick = 0; this.kickV = 0; }
     } else if (this.drawT > 0) this.drawT = Math.max(0, this.drawT - dt / SWAP_UP);
-    const ready = this.pending < 0 && this.drawT < 0.35;
+    const ready = this.pending < 0 && this.drawT < 0.35 && !player.vault; // trepando no se dispara
 
     // --- Golpe rápido con V ---
     if (dead) this.quick = null;
@@ -495,6 +495,12 @@ export class Weapon {
     let ry = this.swayX * 1.1 * (0.3 + 0.7 * hipK) + this.jitY * this.kick * 0.002 + sp * 0.66 + hipK * 0.012;
     let rz = Math.cos(player.bob) * 0.014 * bobK + player.roll * 1.6 + this.jitZ * this.kick * 0.004 - this.swayX * 0.6 * hipK
       + this.crouchT * 0.07 * hipK + sp * 0.16;
+    // Deslizamiento: el arma baja un poco y se ladea hacia dentro (menos al apuntar).
+    const sl = player.slideK * (0.35 + 0.65 * hipK);
+    px -= sl * 0.012; py -= sl * 0.018; rz += sl * 0.2; rx -= sl * 0.04;
+    // Trepando: el arma baja y se ladea mientras la otra mano se apoya en el obstáculo.
+    const vk = player.vaultK;
+    px += vk * 0.03; py -= vk * 0.1; rx -= vk * 0.45; rz += vk * 0.3;
     if (handOut > 0) {
       // Puñalada: el arma de fuego, sujeta sólo con la izquierda, baja un poco y se ladea; el cuchillo en
       // mano baja a la cintura como si se cambiara de agarre.

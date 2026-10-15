@@ -146,7 +146,7 @@ export class Combat {
   // de la IA, r: jugador remoto; posición y hacia dónde mira) o null.
   quickTarget() {
     const { enemies, remotes, net, world, player } = this.g;
-    if (player.dead || player.lock) return null;
+    if (player.dead || player.lock || player.vault) return null;
     const px = player.pos.x; const pz = player.pos.z;
     const vx = -Math.sin(player.yaw); const vz = -Math.cos(player.yaw);
     let best = null; let bd = QUICK_REACH;

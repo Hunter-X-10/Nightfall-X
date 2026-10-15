@@ -114,6 +114,25 @@ export class CollisionWorld {
     return h;
   }
 
+  // Tapa sólida más alta bajo (x, z) que no pase de maxY, sea pisable o no (para medir obstáculos al trepar).
+  topAt(x, z, maxY, margin = 0) {
+    let h = 0;
+    for (let i = 0; i < this.list.length; i++) {
+      const c = this.list[i];
+      if (!c.solid || c.y1 > maxY || c.y1 <= h) continue;
+      const dx = x - c.x;
+      const dz = z - c.z;
+      if (c.type === 'cyl') {
+        if (dx * dx + dz * dz <= (c.r + margin) * (c.r + margin)) h = c.y1;
+      } else {
+        const lx = dx * c.cos - dz * c.sin;
+        const lz = dx * c.sin + dz * c.cos;
+        if (Math.abs(lx) <= c.hx + margin && Math.abs(lz) <= c.hz + margin) h = c.y1;
+      }
+    }
+    return h;
+  }
+
   // ¿Hay techo/obstáculo que impida ponerse de pie?
   blockedAbove(x, z, radius, y0, y1) {
     for (let i = 0; i < this.list.length; i++) {
