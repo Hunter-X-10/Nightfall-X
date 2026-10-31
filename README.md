@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>Shooter en primera persona para el navegador</b><br>
-  Misión en solitario y partidas en línea por equipos. Sin instalar nada.
+  Misión en solitario, supervivencia por oleadas y partidas en línea por equipos. Sin instalar nada.
 </p>
 
 <p align="center">
@@ -20,6 +20,8 @@
   <a href="#-cómo-se-juega">Cómo se juega</a> ·
   <a href="#-mapas">Mapas</a> ·
   <a href="#-armas">Armas</a> ·
+  <a href="#-movimiento">Movimiento</a> ·
+  <a href="#-progreso-skins-y-mercado-negro">Progreso</a> ·
   <a href="#-ajustes-de-la-partida">Ajustes</a> ·
   <a href="#-controles">Controles</a> ·
   <a href="#-cómo-está-hecho">Cómo está hecho</a>
@@ -31,7 +33,7 @@
 
 ## 🚀 Jugar
 
-El juego está publicado en **[nightfall-x.pages.dev](https://nightfall-x.pages.dev)**. Ábrelo en un ordenador con ratón y teclado, pulsa **Jugar misión** o **Multijugador**, y a jugar.
+El juego está publicado en **[nightfall-x.pages.dev](https://nightfall-x.pages.dev)**. Ábrelo en un ordenador con ratón y teclado, elige **Jugar misión**, **Supervivencia** o **Multijugador**, y a jugar.
 
 Va mejor con auriculares y a pantalla completa (**F11**).
 
@@ -42,6 +44,14 @@ Va mejor con auriculares y a pantalla completa (**F11**).
 ### Misión en solitario
 
 Infíltrate de noche en una base abandonada, cruza el control de acceso y llega al terminal del almacén. Diez soldados patrullan, se cubren, se avisan entre ellos y te buscan si te oyen. El cuchillo no hace ruido: una puñalada por la espalda elimina a un guardia sin alertar al resto.
+
+### Supervivencia
+
+Oleadas sin fin en cualquiera de los tres mapas. La primera trae 4 soldados y cada una suma 3 más, con un máximo de 8 a la vez; cada oleada apuntan mejor y reaccionan antes. Te buscan por todo el mapa y rodean los edificios para llegar a ti.
+
+- Cada baja suelta una caja de munición (+10 balas de fusil al pasar por encima).
+- Al superar una oleada: vida y chaleco al máximo, munición repuesta y 20 segundos de descanso.
+- Puntos por baja, por disparo a la cabeza, por cuchillo y por oleada. Se guarda el récord de cada mapa.
 
 ### Partidas en línea por equipos
 
@@ -55,6 +65,15 @@ Dos equipos, **ALFA** y **BRAVO**, se enfrentan hasta que uno alcanza el número
 
 Quien llega tarde puede entrar con la partida empezada. Al terminar se vuelve a la sala y el anfitrión puede lanzar la revancha.
 
+#### Cofres y botín
+
+En línea **la vida no se recupera sola**: hay que curarse con lo que se encuentra.
+
+- Por el mapa hay cofres (uno por jugador, como mínimo 6), en sitios distintos cada partida. Se abren con **F** y sueltan de 1 a 3 objetos que ven todos; se rellenan al minuto.
+- **Vendas**: +50 de vida en 2,5 s. **Botiquín**: vida entera en 5 s. Se llevan 2 de cada como mucho, en los huecos **4** y **5**, y se usan con un clic.
+- **Chaleco**: 50 puntos de armadura que se llevan el daño antes que la vida. Se pone solo al cogerlo.
+- Quien muere deja vendas o un chaleco. Lo que nadie recoge desaparece a los 2 minutos.
+
 > [!NOTE]
 > La partida corre en el navegador de quien la crea, y los demás se conectan directamente a él.
 > - Si el anfitrión cierra la pestaña, la partida termina para todos.
@@ -64,7 +83,7 @@ Quien llega tarde puede entrar con la partida empezada. Al terminar se vuelve a 
 
 ## 🧭 Mapas
 
-Los tres tienen el mismo tamaño (unos 96 × 80 m) y cada uno se juega distinto.
+Los tres tienen el mismo tamaño (unos 96 × 80 m), cada uno se juega distinto y todos valen para la supervivencia y para las partidas en línea.
 
 | | Mapa | Ambiente | Cómo se juega |
 |---|---|---|---|
@@ -76,7 +95,7 @@ Los tres tienen el mismo tamaño (unos 96 × 80 m) y cada uno se juega distinto.
 
 ## 🔫 Armas
 
-Se cambia con **1**, **2** y **3**, con la rueda del ratón o con **Q** (vuelve a la anterior).
+Se cambia con **1**, **2** y **3** o con la rueda del ratón. En línea, **4** y **5** sacan las vendas y el botiquín.
 
 | Arma | Funcionamiento | Daño entre jugadores |
 |---|---|---|
@@ -84,9 +103,38 @@ Se cambia con **1**, **2** y **3**, con la rueda del ratón o con **Q** (vuelve 
 | **Pistola** P22 | Un disparo por clic, 12 balas | 17 al torso |
 | **Cuchillo** | Tajo a 2 m; corres un 12 % más rápido | 55 de frente · **mortal por la espalda** |
 
-Con las armas de fuego, un disparo a la cabeza hace más del doble de daño y uno a las piernas algo menos. Cada jugador tiene 100 de vida, que se recupera sola al cabo de unos segundos sin recibir daño.
+Con las armas de fuego, un disparo a la cabeza hace más del doble de daño y uno a las piernas algo menos. Cada jugador tiene 100 de vida. En la misión y en supervivencia se recupera sola al cabo de unos segundos sin recibir daño y se empieza con chaleco; en línea, no (ver [Cofres y botín](#cofres-y-botín)).
+
+### Golpe rápido con cuchillo (V)
+
+Con cualquier arma en la mano, si tienes un rival a menos de 2 m **de lado o de espaldas** aparece el aviso `V CUCHILLO`. Al pulsar **V**, al azar:
+
+- **Remate** (2 de cada 3): mortal. La cámara se coloca detrás de la víctima y eres inmune durante la animación (1,2 s).
+- **Puñalada** (1 de cada 3): deja al rival con 30 de vida, o lo mata si tenía menos. El chaleco no la para.
 
 ![Partida en curso: marcador, registro de bajas y tabla de jugadores](docs/partida.jpg)
+
+---
+
+## 🏃 Movimiento
+
+- **Resistencia**: el sprint dura unos 5 segundos. Si la agotas, no puedes volver a esprintar hasta recuperar un 30 %. La barra fina bajo la vida solo aparece cuando no está llena.
+- **Deslizamiento**: agáchate mientras esprintas (vale hasta un instante después de soltar Shift, y también al aterrizar de un salto). Recorre unos 3 m y se puede disparar mientras dura.
+- **Trepar**: pulsa Espacio frente a un obstáculo bajo (de 0,4 a 1,25 m). Si es estrecho, lo saltas al otro lado; si no, te subes encima.
+- **Cobertura**: agáchate junto a algo que te tape al menos hasta la cadera y quedas a cubierto. Desde ahí, **Q** y **E** asoman la cabeza a cada lado. Tras una cobertura baja, apuntar te levanta para disparar por encima.
+
+---
+
+## 🏅 Progreso, skins y Mercado Negro
+
+- **Niveles**: ganas XP con cada baja (más por disparo a la cabeza o con cuchillo), cada oleada superada, la misión completada y cada partida en línea. Hay 25 niveles, que se alcanzan en una hora y media de juego más o menos.
+- **Recompensas**: cada nivel da un alijo y 100 monedas, y cada baja da 5 monedas. Los niveles 4, 8, 12, 16, 20 y 24 desbloquean un llavero.
+- **Prestigio**: en el nivel 25 puedes volver al 1 con una estrella (hasta X) sin perder nada de lo conseguido. Tu nivel y tu estrella se ven junto a tu nombre en la sala y en el marcador.
+- **Mercado Negro**: abre los alijos con una ruleta. Cada uno da una skin para el fusil o la pistola: hay 21, de común a mítica. Si ya tenías la que sale, se cambia por monedas. Un alijo cuesta 250 monedas.
+- **Armería**: elige la skin y los llaveros de cada arma. Lo que aún no tienes sale apagado.
+
+> [!NOTE]
+> El progreso se guarda en el navegador de cada dispositivo, sin cuentas. Si borras los datos del sitio o juegas en incógnito, se pierde. Por ahora, las skins y los llaveros solo los ves tú.
 
 ---
 
@@ -118,11 +166,14 @@ Durante la partida el nombre de tus compañeros se ve siempre sobre su cabeza; e
 | **Clic derecho** | Apuntar |
 | **R** | Recargar |
 | **1 · 2 · 3** | Fusil, pistola, cuchillo |
-| **Rueda / Q** | Cambiar de arma |
+| **4 · 5** | Vendas y botiquín (en línea) |
+| **Rueda** | Cambiar de arma |
+| **V** | Golpe rápido con cuchillo |
 | **Shift** | Esprintar |
-| **Ctrl / C** | Agacharse |
-| **Espacio** | Saltar |
-| **F** | Linterna |
+| **Ctrl / C** | Agacharse (esprintando: deslizarse) |
+| **Espacio** | Saltar (frente a un obstáculo bajo: trepar) |
+| **Q · E** | Asomarse a cubierto |
+| **F** | Linterna · abrir cofres y recoger objetos |
 | **Tab** | Tabla de jugadores (en línea) |
 | **Esc** | Pausa o menú |
 
@@ -141,13 +192,21 @@ src/
   main.js          arranque, estados del juego y bucle principal
   maps.js          catálogo de mapas
   world/           un archivo por mapa, más las piezas comunes (vehículos, contenedores…)
-  weapon.js        las tres armas
+  player.js        movimiento, resistencia, cobertura, deslizamiento y trepar
+  weapon.js        las armas, las vendas y el botiquín
   combat.js        daño, bajas y bidones explosivos
-  roomCore.js      salas, equipos, marcador y ajustes
+  survival.js      modo supervivencia por oleadas
+  loot.js          cofres y objetos (lootWorld.js los dibuja)
+  progress.js      XP, niveles, prestigio, monedas y alijos
+  profile.js       perfil del jugador guardado en el navegador
+  skins.js         skins procedurales (skinPaint.js las pinta)
+  armory.js        armería: skins y llaveros
+  market.js        Mercado Negro: ruleta de alijos
+  roomCore.js      salas, equipos, marcador, ajustes y botín
   net.js           conexión con la sala
   p2p.js           conexión directa entre navegadores
   remotePlayers.js los demás jugadores en pantalla
-  enemies.js       inteligencia de los soldados de la misión
+  enemies.js       inteligencia de los soldados (navgrid.js: rutas en supervivencia)
 server.js          servidor para jugar en local
 tools/             pruebas automáticas
 ```
